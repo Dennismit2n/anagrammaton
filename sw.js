@@ -6,7 +6,7 @@
 'use strict';
 
 // Bei jedem Deploy, der eine der Dateien unten ändert, um 1 erhöhen.
-const CACHE = 'anagrammaton-v1';
+const CACHE = 'anagrammaton-v2';
 // Wortlisten in einem eigenen Cache: sie überleben jeden Versionssprung der Hülle und erneuern sich
 // beim Gebrauch selbst (stale-while-revalidate). Nur erhöhen, wenn sich das Format der Listen ändert.
 const WOERTER = 'anagrammaton-woerter-v1';
