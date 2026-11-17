@@ -1,0 +1,19 @@
+{
+  "id": "/anagrammaton/",
+  "name": "Anagrammaton",
+  "short_name": "Anagrammaton",
+  "description": "Anagramme, Rückwärtswörter und Palindrome in 14 Sprachen, mit fliegenden Buchstabenkacheln. Ohne Cookies, nach dem ersten Besuch auch offline. Anagrams, reversals and palindromes in 14 languages.",
+  "lang": "de",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#100E17",
+  "theme_color": "#100E17",
+  "categories": ["education", "entertainment", "utilities"],
+  "icons": [
+    {"src": "icon-192.png", "sizes": "192x192", "type": "image/png"},
+    {"src": "icon-512.png", "sizes": "512x512", "type": "image/png"},
+    {"src": "icon-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"},
+    {"src": "favicon.svg", "sizes": "any", "type": "image/svg+xml"}
+  ]
+}

@@ -1,0 +1,1478 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- Anagrammaton lädt nur eigene Dateien: keine fremden Skripte, Schriften, Bilder oder Zähler.
+     Die Wortlisten kommen aus woerter/ vom selben Server, gesucht wird im Browser (worker.js). -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; manifest-src 'self'; worker-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#100E17">
+<meta name="description" content="Anagramme, Rückwärtswörter und Palindrome in 14 Sprachen. Deine Buchstaben fliegen als farbige Kacheln an ihren neuen Platz. Ohne Cookies, nach dem ersten Besuch auch offline. / Anagrams, reversals and palindromes in 14 languages, with flying letter tiles.">
+<meta name="application-name" content="Anagrammaton">
+<meta name="apple-mobile-web-app-title" content="Anagrammaton">
+<!-- Link-Vorschau. og:image muss absolut sein, Crawler lösen relative Pfade nicht auf. -->
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://dennismit2n.github.io/anagrammaton/">
+<meta property="og:title" content="Anagrammaton">
+<meta property="og:description" content="Anagrams, reversals and palindromes in 14 languages. Your letters fly as coloured tiles to their new places. No cookies, works offline after the first visit.">
+<meta property="og:image" content="https://dennismit2n.github.io/anagrammaton/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Dark graphic: the Anagrammaton logo of letter tiles and its name, coloured letter tiles changing places, and the line “Anagrams, reversals and palindromes in 14 languages”.">
+<meta property="og:locale" content="en_GB">
+<meta property="og:locale:alternate" content="de_DE">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="icon" href="./favicon.svg" type="image/svg+xml">
+<link rel="icon" href="./icon-192.png" type="image/png" sizes="192x192">
+<link rel="apple-touch-icon" href="./icon-192.png">
+<title>Anagrammaton</title>
+<script>
+/* Vor dem ersten Bild: gemeinsame Darstellung der Werkstatt setzen (werkstatt.darstellung),
+   sonst blitzt kurz die falsche Farbe auf. Grundzustand ohne Wahl ist dunkel. */
+(function () {
+  var d = document.documentElement;
+  try {
+    var th = localStorage.getItem('werkstatt.darstellung');
+    var mm = window.matchMedia, ts = null, vs = null;
+    if (th === 'light' || th === 'dark') ts = th;
+    else if (th === 'hc-dark' || th === 'hc-light') { ts = th.slice(3); vs = 'contrast'; }
+    else if (th === 'cvd-dark' || th === 'cvd-light') { ts = th.slice(4); vs = 'cvd'; }
+    else if (th === 'invert') vs = 'invert';
+    else if (th && /dark/.test(th)) ts = 'dark';
+    else if (th && /light/.test(th)) ts = 'light';
+    else if (mm && mm('(prefers-contrast: more)').matches) { ts = mm('(prefers-color-scheme: light)').matches ? 'light' : 'dark'; vs = 'contrast'; }
+    if (ts) d.setAttribute('data-theme', ts);
+    if (vs) d.setAttribute('data-vision', vs);
+  } catch (e) {}
+  /* beforeinstallprompt kann kommen, bevor das Skript am Seitenende läuft: hier aufheben. */
+  window.addEventListener('beforeinstallprompt', function (e) {
+    e.preventDefault();
+    window.zuInstall = e;
+    if (window.zuInstallZeigen) window.zuInstallZeigen();
+  });
+})();
+</script>
+<style>
+/* Registrierte Eigenschaften: so gleiten Winkel, Farben und Farbdrehung weich statt zu springen. */
+@property --winkel { syntax: '<angle>'; inherits: false; initial-value: 90deg; }
+@property --b1 { syntax: '<color>'; inherits: false; initial-value: #2A2036; }
+@property --b2 { syntax: '<color>'; inherits: false; initial-value: #17263A; }
+@property --dh { syntax: '<number>'; inherits: true; initial-value: 0; }
+
+/* Dunkel ist der Grundzustand. Hell nur über die Systemeinstellung (bei „System“) oder die Wahl „Hell“. */
+:root {
+  color-scheme: dark;
+  --bg: #100E17; --panel: #17141F; --panel-2: #1F1A2A; --panel-3: #262033; --line: #2E2840; --line-2: #433A5B;
+  --text: #BCB5CF; --head: #DED7EA; --soft: #938CAA;
+  --mauve: #B699C1; --mauve-bg: #2A2036; --blue: #8CA7CE; --green: #7EB39D; --warn: #D9B76E;
+  --focus: #B699C1;
+  --au1: oklch(0.34 0.11 305 / .55); --au2: oklch(0.32 0.08 205 / .42); --au3: oklch(0.30 0.10 350 / .38); --au4: oklch(0.33 0.09 260 / .45);
+  --zl: 0.8; --zc: 0.11;
+  --r: 16px;
+  --schrift: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --schrift-k: Bahnschrift, "DIN Alternate", "DIN Next", "Barlow", "Roboto Condensed", "Arial Nova", system-ui, sans-serif;
+}
+:root[data-vision="invert"] { --soft: #ABA6C4; }
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    color-scheme: light;
+    --bg: #F1EFF6; --panel: #FFFFFF; --panel-2: #F5F3FA; --panel-3: #ECE8F4; --line: #D9D4E6; --line-2: #BDB6D3;
+    --text: #2E2A45; --head: #17142B; --soft: #5E5A7C;
+    --mauve: #6E4580; --mauve-bg: #F2EAF5; --blue: #2F5287; --green: #276149; --warn: #7A5600; --focus: #6E4580;
+    --au1: oklch(0.86 0.06 305 / .55); --au2: oklch(0.88 0.05 205 / .45); --au3: oklch(0.87 0.06 350 / .4); --au4: oklch(0.86 0.05 260 / .45);
+    --zl: 0.45; --zc: 0.13;
+  }
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #F1EFF6; --panel: #FFFFFF; --panel-2: #F5F3FA; --panel-3: #ECE8F4; --line: #D9D4E6; --line-2: #BDB6D3;
+  --text: #2E2A45; --head: #17142B; --soft: #5E5A7C;
+  --mauve: #6E4580; --mauve-bg: #F2EAF5; --blue: #2F5287; --green: #276149; --warn: #7A5600; --focus: #6E4580;
+  --au1: oklch(0.86 0.06 305 / .55); --au2: oklch(0.88 0.05 205 / .45); --au3: oklch(0.87 0.06 350 / .4); --au4: oklch(0.86 0.05 260 / .45);
+  --zl: 0.45; --zc: 0.13;
+}
+/* Sehhilfen der Werkstatt */
+:root[data-vision="contrast"]:not([data-theme="light"]) {
+  --bg: #000; --panel: #000; --panel-2: #0A0A0A; --panel-3: #161616; --line: #A0A0A0; --line-2: #C4C4C4;
+  --text: #E0E0E0; --head: #FFFFFF; --soft: #C4C4C4; --mauve: #E6C8F0; --mauve-bg: #2A1F30; --blue: #B5CCF2; --green: #9CE0C0; --warn: #F2D27A; --focus: #FFFFFF;
+}
+:root[data-vision="contrast"][data-theme="light"] {
+  --bg: #FFF; --panel: #FFF; --panel-2: #FFF; --panel-3: #EEE; --line: #585757; --line-2: #2B2B2B;
+  --text: #000; --head: #000; --soft: #2B2B2B; --mauve: #4A1D5C; --mauve-bg: #F2EAF5; --blue: #133C78; --green: #0B4A30; --warn: #5A3E00; --focus: #000;
+}
+:root[data-vision="contrast"] :is(.tafel, .feld, .knopf, select, .gross) { border-width: 2px; }
+:root[data-vision="contrast"] :is(button, input, select, a, [tabindex]):focus-visible { outline-width: 3px; }
+:root[data-vision="cvd"]:not([data-theme="light"]) { --green: #56B4E9; --warn: #F0E442; --mauve: #CC9EC2; }
+:root[data-vision="cvd"][data-theme="light"] { --green: #0067A2; --warn: #956500; }
+:root[data-vision="invert"] { filter: invert(1); }
+@media print { :root[data-vision="invert"] { filter: none; } }
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font: 16px/1.5 var(--schrift);
+  min-height: 100vh; overflow-x: hidden;
+}
+a { color: var(--blue); }
+button, input, select { font: inherit; color: inherit; }
+:is(button, input, select, a, [tabindex]):focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.huelle { max-width: 1040px; margin: 0 auto; padding: 0 16px 40px; position: relative; }
+.vh { position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* Aurora: ruhiger Farbschleier hinter allem. Eine einzige langsame Drift (zwei Minuten hin, zwei zurück). */
+.aurora { position: fixed; inset: -18vmax; z-index: -1; pointer-events: none; }
+.aurora i { position: absolute; inset: 0; display: block; }
+.aurora .a1 { background: radial-gradient(38vmax 28vmax at 24% 18%, var(--au1), transparent 70%), radial-gradient(42vmax 32vmax at 82% 30%, var(--au2), transparent 70%); }
+.aurora .a2 { background: radial-gradient(44vmax 30vmax at 70% 82%, var(--au3), transparent 70%), radial-gradient(36vmax 30vmax at 18% 70%, var(--au4), transparent 70%); opacity: .75; }
+@media (prefers-reduced-motion: no-preference) {
+  .aurora .a1 { animation: drift1 120s ease-in-out infinite alternate; }
+  .aurora .a2 { animation: drift2 120s ease-in-out infinite alternate; }
+}
+@keyframes drift1 { to { transform: translate3d(4vmax, 3vmax, 0) rotate(6deg); opacity: .7; } }
+@keyframes drift2 { to { transform: translate3d(-5vmax, -2vmax, 0) rotate(-5deg); opacity: 1; } }
+:root[data-vision="contrast"] .aurora { display: none; }
+
+/* Kopf */
+header.kopf { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 18px 0 12px; }
+.marke { display: flex; align-items: center; gap: 12px; margin-right: auto; text-decoration: none; color: var(--head); min-width: 0; }
+.marke svg { width: 42px; height: 42px; flex: none; filter: drop-shadow(-3px 4px 6px rgba(0, 0, 0, .45)); }
+.marke h1 { margin: 0; font: 600 22px/1.1 var(--schrift-k); letter-spacing: .03em; }
+.marke small { display: block; color: var(--soft); font-size: 13px; letter-spacing: .01em; margin-top: 2px; }
+.steuer { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+select, .knopf, .feld {
+  border: 1px solid var(--line); border-radius: 10px; padding: 7px 10px; min-height: 40px; background-color: var(--panel); color: var(--text);
+}
+select { padding-right: 30px; appearance: none; cursor: pointer; max-width: 100%; }
+.knopf { cursor: pointer; display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
+.knopf:hover { border-color: var(--line-2); }
+.knopf.akzent { border-color: var(--mauve); color: var(--mauve); }
+.knopf svg { width: 18px; height: 18px; flex: none; }
+.mini { background: none; border: 1px solid transparent; border-radius: 8px; color: var(--soft); cursor: pointer; width: 34px; height: 34px; display: inline-grid; place-items: center; padding: 0; flex: none; }
+.mini:hover { color: var(--head); border-color: var(--line); background: var(--panel-2); }
+.mini svg { width: 16px; height: 16px; }
+
+/* Eingabe */
+.eingabe { padding: 16px 18px 14px; }
+.eingabe-l { display: block; color: var(--soft); font-size: 14px; margin: 0 0 6px; }
+.feldzeile { position: relative; }
+.gross {
+  width: 100%; border: 1px solid var(--line); border-radius: 12px; background-color: var(--panel-2); color: var(--head);
+  font: 500 clamp(22px, 4.4vw, 32px)/1.2 var(--schrift-k); letter-spacing: .02em; padding: 12px 52px 12px 16px; min-height: 60px;
+}
+.gross::placeholder { color: var(--soft); opacity: 1; font-weight: 400; font-size: .72em; }
+.gross:focus { border-color: var(--mauve); outline: none; }
+.gross:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.feldzeile .mini { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); }
+.optionen { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin-top: 12px; }
+.wahl { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; font-size: 14px; color: var(--soft); max-width: 100%; }
+.schalter { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; color: var(--text); cursor: pointer; min-height: 40px; }
+.schalter input { width: 18px; height: 18px; accent-color: var(--mauve); margin: 0; }
+.optionen .knopf { margin-left: auto; }
+
+/* Bühne */
+.buehne-teil { margin-top: 16px; }
+.buehne {
+  --winkel: 90deg; position: relative; overflow: hidden; border: 1px solid var(--line); border-radius: var(--r);
+  padding: 30px 20px; min-height: 150px; display: grid; place-items: center;
+  transition: --winkel .65s cubic-bezier(.3, .7, .2, 1), --b1 .65s ease, --b2 .65s ease;
+}
+.kacheln { --kz: 64px; display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: calc(var(--kz) * .14) calc(var(--kz) * .46); width: 100%; min-height: var(--kz); }
+.wort { display: flex; flex-wrap: wrap; justify-content: center; gap: calc(var(--kz) * .14); max-width: 100%; }
+.kachel {
+  --k1: #6D3BB0; --k2: #5A1E7A; --kt: #F1EBF7;
+  width: var(--kz); height: var(--kz); flex: none; position: relative; display: grid; place-items: center;
+  border-radius: calc(var(--kz) * .17); color: var(--kt); transform-origin: 0 0;
+  font: 600 calc(var(--kz) * .5)/1 var(--schrift-k); user-select: none; -webkit-user-select: none;
+}
+.kachel b { font-weight: inherit; transform: translateY(.03em); }
+.kachel.breit { font-size: max(12px, calc(var(--kz) * .4)); }
+.buehne-leer { margin: 0; color: var(--soft); text-align: center; max-width: 34ch; }
+.spiel { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 12px; }
+.spielknopf { min-height: 44px; padding: 8px 14px; font-weight: 500; }
+.spielknopf .led { width: 10px; height: 10px; border: 1.5px solid currentColor; border-radius: 2px; flex: none; opacity: .75; }
+.spielknopf[aria-pressed="true"] { border-color: var(--mauve); color: var(--head); }
+.spielknopf[aria-pressed="true"] .led { background: currentColor; opacity: 1; }
+:root[data-vision="cvd"] .spielknopf[aria-pressed="true"], :root[data-vision="contrast"] .spielknopf[aria-pressed="true"] { border-style: double; border-width: 3px; }
+
+/* Treffer */
+.ergebnis { margin-top: 18px; padding: 8px 18px 18px; }
+.reiter { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid var(--line); margin: 0 -6px 14px; padding: 6px 6px 0; }
+.reiter button {
+  background: none; border: 0; border-bottom: 3px solid transparent; color: var(--soft); cursor: pointer;
+  padding: 10px 10px 9px; display: inline-flex; align-items: center; gap: 7px; font-weight: 500; margin-bottom: -1px; min-height: 44px;
+}
+.reiter button:hover { color: var(--head); }
+.reiter button[aria-selected="true"] { color: var(--head); border-bottom-color: var(--mauve); font-weight: 600; }
+.zahl { font-size: 12px; min-width: 24px; padding: 1px 7px; border-radius: 999px; background: var(--panel-3); color: var(--text); font-variant-numeric: tabular-nums; text-align: center; }
+.zahl:empty { display: none; }
+.filter { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; margin-bottom: 12px; }
+.filter .feld { width: 210px; max-width: 100%; }
+.stand { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; min-height: 40px; color: var(--soft); font-size: 14px; }
+.leiste { height: 3px; border-radius: 3px; background: repeating-linear-gradient(90deg, transparent 0 calc(10% - 1px), var(--line-2) calc(10% - 1px) 10%), var(--panel-3); overflow: hidden; margin: 6px 0 14px; }
+.leiste i { display: block; height: 100%; width: 0; background: var(--mauve); transition: width .5s linear; }
+.hinweis { color: var(--soft); margin: 6px 0; font-size: 15px; }
+.liste { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.t { display: inline-flex; align-items: stretch; border-radius: 10px; background: var(--panel-2); max-width: 100%; }
+.t:hover { background: var(--panel-3); }
+.spielen {
+  background: none; border: 0; cursor: pointer; padding: 7px 4px 7px 12px; text-align: left; min-height: 40px;
+  font: 500 17px/1.3 var(--schrift-k); letter-spacing: .02em; overflow-wrap: anywhere; min-width: 0;
+}
+.t.nur .spielen { cursor: default; padding-right: 12px; }
+.t .mini { width: 34px; height: auto; min-height: 40px; border-radius: 0 10px 10px 0; }
+.z > span { color: oklch(var(--zl) var(--zc) calc(var(--h, 300) + var(--dh))); }
+.z > .lz { display: inline-block; width: .5em; }
+.z > .pf { color: var(--soft); padding: 0 .35em; }
+:root[data-vision="contrast"] .z > span { color: var(--head); }
+:root[data-vision="contrast"] :is(.t, .chip) { border: 2px solid var(--line); }
+.ergebnis, .leer, .rueck-text { transition: --dh .62s cubic-bezier(.45, 0, .2, 1); }
+.mehr-knopf { margin-top: 14px; }
+.rueck-kopf { display: grid; gap: 4px; margin-bottom: 8px; }
+.klein { font-size: 13px; color: var(--soft); }
+.rueck-text { font: 500 clamp(22px, 4vw, 30px)/1.25 var(--schrift-k); letter-spacing: .04em; overflow-wrap: anywhere; }
+.urteil { margin: 4px 0 16px; color: var(--head); display: flex; align-items: center; gap: 8px; }
+.urteil svg { width: 18px; height: 18px; flex: none; color: var(--green); }
+.urteil.nein svg { color: var(--soft); }
+.ergebnis h3 { font: 600 15px/1.3 var(--schrift); color: var(--head); margin: 18px 0 8px; }
+.ergebnis h4 { font: 500 13px/1.3 var(--schrift); color: var(--soft); margin: 0 0 6px; text-transform: none; }
+.entdecken { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 20px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { background: var(--panel-2); border: 0; border-radius: 9px; padding: 6px 11px; cursor: pointer; font: 500 16px/1.3 var(--schrift-k); letter-spacing: .02em; min-height: 36px; max-width: 100%; overflow-wrap: anywhere; text-align: left; }
+.chip:hover { background: var(--panel-3); }
+.chip .pf { color: var(--soft); padding: 0 .3em; }
+
+/* Leerer Zustand */
+.leer { margin-top: 18px; padding: 18px 20px 20px; }
+.leer h2 { font: 600 17px/1.3 var(--schrift); color: var(--head); margin: 0 0 12px; }
+.leer .chip { font-size: 21px; padding: 9px 16px; min-height: 46px; }
+.leer p { margin: 14px 0 0; color: var(--soft); }
+
+footer { margin-top: 30px; padding-top: 16px; border-top: 1px solid var(--line); font-size: 14px; color: var(--soft); display: flex; flex-wrap: wrap; gap: 6px 18px; }
+footer a { color: var(--blue); }
+
+.toast { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%) translateY(16px); opacity: 0; background: var(--panel-2); color: var(--head); border: 1px solid var(--line-2); border-radius: 12px; padding: 10px 16px; transition: opacity .25s, transform .25s; pointer-events: none; z-index: 20; max-width: calc(100% - 32px); }
+.toast.an { opacity: 1; transform: translateX(-50%); }
+
+@media (prefers-reduced-motion: reduce) {
+  .toast, .leiste i, .buehne, .ergebnis, .leer, .rueck-text { transition: none; }
+}
+@media (max-width: 640px) {
+  .eingabe { padding: 14px 14px 12px; }
+  .buehne { padding: 22px 12px; min-height: 120px; }
+  .ergebnis { padding: 6px 14px 16px; }
+  /* Drei gleich breite Reiter statt Umbruch in eine zweite Zeile; lange Namen brechen in ihrer Spalte um. */
+  .reiter { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2px; }
+  .reiter button { padding: 8px 4px 7px; flex-direction: column; justify-content: center; gap: 4px; text-align: center; line-height: 1.2; min-width: 0; }
+  .reiter button > span:first-child { min-width: 0; overflow-wrap: anywhere; hyphens: auto; }
+  .entdecken { grid-template-columns: minmax(0, 1fr); }
+  .optionen .knopf { margin-left: 0; }
+  .spiel { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .spielknopf { justify-content: center; white-space: normal; min-width: 0; padding: 8px 10px; gap: 6px; line-height: 1.2; text-align: center; }
+  .spielknopf span { min-width: 0; overflow-wrap: anywhere; hyphens: auto; }
+}
+@media (max-width: 420px) {
+  header.kopf .steuer { width: 100%; }
+  header.kopf .steuer select { flex: 1 1 0; min-width: 0; }
+  #installieren { width: 100%; justify-content: center; }
+  .marke small { font-size: 12px; }
+}
+
+/* Beschlag (wie die Kacheln der Startseite): eckiger Innenrahmen in der Rundung und vier kleine
+   Schrauben in Weißgold, Licht von rechts oben, Schatten nach links unten. Der Beschlag liegt als
+   acht Hintergrund-Ebenen (--beschlag) vor dem eigenen Grund jedes Bauteils. Präfix bsl-, weil
+   --bg die Hintergrundfarbe ist. --bsl-i Abstand des Rahmens von der Innenkante, --bsl-g
+   Schraubengröße, --bsl-a Abstand der Schraube vom Rahmen, --bsl-l Linienfarbe. */
+:root {
+  --schraube-1: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cdefs%3E%3CradialGradient id='s' cx='42%' cy='58%' r='50%'%3E%3Cstop offset='55%' stop-opacity='.6'/%3E%3Cstop offset='100%' stop-opacity='0'/%3E%3C/radialGradient%3E%3CradialGradient id='k' cx='66%' cy='30%' r='78%'%3E%3Cstop offset='0' stop-color='%23FFFFFF'/%3E%3Cstop offset='.2' stop-color='%23FFFCEE'/%3E%3Cstop offset='.5' stop-color='%23F1E4BC'/%3E%3Cstop offset='.8' stop-color='%23C4A964'/%3E%3Cstop offset='1' stop-color='%237A6226'/%3E%3C/radialGradient%3E%3ClinearGradient id='m' x1='1' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%238A6A22' stop-opacity='.55'/%3E%3Cstop offset='.5' stop-color='%23FFF3C4' stop-opacity='0'/%3E%3Cstop offset='1' stop-color='%23FFFBEA' stop-opacity='.7'/%3E%3C/linearGradient%3E%3C/defs%3E%3Ccircle cx='5.1' cy='6.9' r='5' fill='url(%23s)'/%3E%3Ccircle cx='6' cy='6' r='4.3' fill='url(%23k)'/%3E%3Ccircle cx='6' cy='6' r='4.3' fill='none' stroke='%23553E0C' stroke-opacity='.6' stroke-width='.45'/%3E%3Ccircle cx='6' cy='6' r='2.9' fill='none' stroke='url(%23m)' stroke-width='.5'/%3E%3Cg transform='rotate(32 6 6)'%3E%3Cpath d='M2.5 6h7' stroke='%233A2A07' stroke-width='1.2' stroke-linecap='round'/%3E%3Cpath d='M2.7 6.62h6.6' stroke='%23FFF7DA' stroke-opacity='.75' stroke-width='.3' stroke-linecap='round'/%3E%3C/g%3E%3Cellipse cx='7.7' cy='3.9' rx='1.05' ry='.6' transform='rotate(-35 7.7 3.9)' fill='%23FFFFFF' fill-opacity='.9'/%3E%3C/svg%3E");
+  --schraube-2: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cdefs%3E%3CradialGradient id='s' cx='42%' cy='58%' r='50%'%3E%3Cstop offset='55%' stop-opacity='.6'/%3E%3Cstop offset='100%' stop-opacity='0'/%3E%3C/radialGradient%3E%3CradialGradient id='k' cx='66%' cy='30%' r='78%'%3E%3Cstop offset='0' stop-color='%23FFFFFF'/%3E%3Cstop offset='.2' stop-color='%23FFFCEE'/%3E%3Cstop offset='.5' stop-color='%23F1E4BC'/%3E%3Cstop offset='.8' stop-color='%23C4A964'/%3E%3Cstop offset='1' stop-color='%237A6226'/%3E%3C/radialGradient%3E%3ClinearGradient id='m' x1='1' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%238A6A22' stop-opacity='.55'/%3E%3Cstop offset='.5' stop-color='%23FFF3C4' stop-opacity='0'/%3E%3Cstop offset='1' stop-color='%23FFFBEA' stop-opacity='.7'/%3E%3C/linearGradient%3E%3C/defs%3E%3Ccircle cx='5.1' cy='6.9' r='5' fill='url(%23s)'/%3E%3Ccircle cx='6' cy='6' r='4.3' fill='url(%23k)'/%3E%3Ccircle cx='6' cy='6' r='4.3' fill='none' stroke='%23553E0C' stroke-opacity='.6' stroke-width='.45'/%3E%3Ccircle cx='6' cy='6' r='2.9' fill='none' stroke='url(%23m)' stroke-width='.5'/%3E%3Cg transform='rotate(-58 6 6)'%3E%3Cpath d='M2.5 6h7' stroke='%233A2A07' stroke-width='1.2' stroke-linecap='round'/%3E%3Cpath d='M2.7 6.62h6.6' stroke='%23FFF7DA' stroke-opacity='.75' stroke-width='.3' stroke-linecap='round'/%3E%3C/g%3E%3Cellipse cx='7.7' cy='3.9' rx='1.05' ry='.6' transform='rotate(-35 7.7 3.9)' fill='%23FFFFFF' fill-opacity='.9'/%3E%3C/svg%3E");
+  --schraube-3: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cdefs%3E%3CradialGradient id='s' cx='42%' cy='58%' r='50%'%3E%3Cstop offset='55%' stop-opacity='.6'/%3E%3Cstop offset='100%' stop-opacity='0'/%3E%3C/radialGradient%3E%3CradialGradient id='k' cx='66%' cy='30%' r='78%'%3E%3Cstop offset='0' stop-color='%23FFFFFF'/%3E%3Cstop offset='.2' stop-color='%23FFFCEE'/%3E%3Cstop offset='.5' stop-color='%23F1E4BC'/%3E%3Cstop offset='.8' stop-color='%23C4A964'/%3E%3Cstop offset='1' stop-color='%237A6226'/%3E%3C/radialGradient%3E%3ClinearGradient id='m' x1='1' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%238A6A22' stop-opacity='.55'/%3E%3Cstop offset='.5' stop-color='%23FFF3C4' stop-opacity='0'/%3E%3Cstop offset='1' stop-color='%23FFFBEA' stop-opacity='.7'/%3E%3C/linearGradient%3E%3C/defs%3E%3Ccircle cx='5.1' cy='6.9' r='5' fill='url(%23s)'/%3E%3Ccircle cx='6' cy='6' r='4.3' fill='url(%23k)'/%3E%3Ccircle cx='6' cy='6' r='4.3' fill='none' stroke='%23553E0C' stroke-opacity='.6' stroke-width='.45'/%3E%3Ccircle cx='6' cy='6' r='2.9' fill='none' stroke='url(%23m)' stroke-width='.5'/%3E%3Cg transform='rotate(78 6 6)'%3E%3Cpath d='M2.5 6h7' stroke='%233A2A07' stroke-width='1.2' stroke-linecap='round'/%3E%3Cpath d='M2.7 6.62h6.6' stroke='%23FFF7DA' stroke-opacity='.75' stroke-width='.3' stroke-linecap='round'/%3E%3C/g%3E%3Cellipse cx='7.7' cy='3.9' rx='1.05' ry='.6' transform='rotate(-35 7.7 3.9)' fill='%23FFFFFF' fill-opacity='.9'/%3E%3C/svg%3E");
+  --schraube-4: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cdefs%3E%3CradialGradient id='s' cx='42%' cy='58%' r='50%'%3E%3Cstop offset='55%' stop-opacity='.6'/%3E%3Cstop offset='100%' stop-opacity='0'/%3E%3C/radialGradient%3E%3CradialGradient id='k' cx='66%' cy='30%' r='78%'%3E%3Cstop offset='0' stop-color='%23FFFFFF'/%3E%3Cstop offset='.2' stop-color='%23FFFCEE'/%3E%3Cstop offset='.5' stop-color='%23F1E4BC'/%3E%3Cstop offset='.8' stop-color='%23C4A964'/%3E%3Cstop offset='1' stop-color='%237A6226'/%3E%3C/radialGradient%3E%3ClinearGradient id='m' x1='1' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%238A6A22' stop-opacity='.55'/%3E%3Cstop offset='.5' stop-color='%23FFF3C4' stop-opacity='0'/%3E%3Cstop offset='1' stop-color='%23FFFBEA' stop-opacity='.7'/%3E%3C/linearGradient%3E%3C/defs%3E%3Ccircle cx='5.1' cy='6.9' r='5' fill='url(%23s)'/%3E%3Ccircle cx='6' cy='6' r='4.3' fill='url(%23k)'/%3E%3Ccircle cx='6' cy='6' r='4.3' fill='none' stroke='%23553E0C' stroke-opacity='.6' stroke-width='.45'/%3E%3Ccircle cx='6' cy='6' r='2.9' fill='none' stroke='url(%23m)' stroke-width='.5'/%3E%3Cg transform='rotate(-14 6 6)'%3E%3Cpath d='M2.5 6h7' stroke='%233A2A07' stroke-width='1.2' stroke-linecap='round'/%3E%3Cpath d='M2.7 6.62h6.6' stroke='%23FFF7DA' stroke-opacity='.75' stroke-width='.3' stroke-linecap='round'/%3E%3C/g%3E%3Cellipse cx='7.7' cy='3.9' rx='1.05' ry='.6' transform='rotate(-35 7.7 3.9)' fill='%23FFFFFF' fill-opacity='.9'/%3E%3C/svg%3E");
+}
+select, .knopf, .feld, .gross, .tafel, .kachel {
+  --bsl-i: 2px;
+  --bsl-g: 4.5px;
+  --bsl-a: 1px;
+  --bsl-l: currentColor;
+  --beschlag:
+    var(--schraube-1) left calc(var(--bsl-i) + var(--bsl-a)) top calc(var(--bsl-i) + var(--bsl-a)) / var(--bsl-g) var(--bsl-g) no-repeat,
+    var(--schraube-2) right calc(var(--bsl-i) + var(--bsl-a)) top calc(var(--bsl-i) + var(--bsl-a)) / var(--bsl-g) var(--bsl-g) no-repeat,
+    var(--schraube-3) left calc(var(--bsl-i) + var(--bsl-a)) bottom calc(var(--bsl-i) + var(--bsl-a)) / var(--bsl-g) var(--bsl-g) no-repeat,
+    var(--schraube-4) right calc(var(--bsl-i) + var(--bsl-a)) bottom calc(var(--bsl-i) + var(--bsl-a)) / var(--bsl-g) var(--bsl-g) no-repeat,
+    linear-gradient(var(--bsl-l), var(--bsl-l)) center top var(--bsl-i) / calc(100% - 2 * var(--bsl-i)) 1px no-repeat,
+    linear-gradient(var(--bsl-l), var(--bsl-l)) center bottom var(--bsl-i) / calc(100% - 2 * var(--bsl-i)) 1px no-repeat,
+    linear-gradient(var(--bsl-l), var(--bsl-l)) left var(--bsl-i) center / 1px calc(100% - 2 * var(--bsl-i)) no-repeat,
+    linear-gradient(var(--bsl-l), var(--bsl-l)) right var(--bsl-i) center / 1px calc(100% - 2 * var(--bsl-i)) no-repeat;
+}
+@supports (color: color-mix(in srgb, red 50%, transparent)) {
+  select, .knopf, .feld, .gross, .tafel { --bsl-l: color-mix(in srgb, var(--mauve) 45%, transparent); }
+  .kachel { --bsl-l: color-mix(in srgb, var(--kt) 30%, transparent); }
+}
+select, .knopf {
+  --bsl-i: 3px;
+  --bsl-g: 4px;
+  --bsl-a: 0.5px;
+  box-shadow: -3px 4px 8px -4px rgba(0, 0, 0, 0.5);
+}
+.knopf { background: var(--beschlag), var(--panel); }
+.knopf:hover { background: var(--beschlag), var(--panel-2); }
+.knopf.akzent, .spielknopf[aria-pressed="true"] { background: var(--beschlag), var(--mauve-bg); }
+select {
+  background:
+    var(--beschlag),
+    linear-gradient(45deg, transparent 50%, var(--soft) 50%) calc(100% - 16px) 52% / 5px 5px no-repeat,
+    linear-gradient(135deg, var(--soft) 50%, transparent 50%) calc(100% - 11px) 52% / 5px 5px no-repeat,
+    var(--panel);
+}
+.feld {
+  --bsl-i: 3px;
+  --bsl-g: 4px;
+  --bsl-a: 0.5px;
+  background: var(--beschlag), var(--panel-2);
+}
+.gross {
+  --bsl-i: 4px;
+  --bsl-g: 5px;
+  --bsl-a: 1px;
+  background: var(--beschlag), var(--panel-2);
+}
+.tafel {
+  --bsl-i: 5px;
+  --bsl-g: 7px;
+  --bsl-a: 2px;
+  background: var(--beschlag), color-mix(in srgb, var(--panel) 90%, transparent);
+  border: 1px solid var(--line); border-radius: var(--r);
+  box-shadow: -12px 14px 30px -6px rgba(0, 0, 0, 0.34);
+}
+.buehne.tafel {
+  background:
+    var(--beschlag),
+    linear-gradient(var(--winkel), color-mix(in srgb, var(--b1) 12%, transparent), transparent 40%, transparent 60%, color-mix(in srgb, var(--b2) 12%, transparent)),
+    color-mix(in srgb, var(--panel) 92%, transparent);
+}
+.kachel {
+  --bsl-i: calc(var(--kz) * .06);
+  --bsl-g: calc(var(--kz) * .075);
+  --bsl-a: 0.5px;
+  background: var(--beschlag), linear-gradient(225deg, var(--k1), var(--k2));
+  box-shadow: -4px 6px 12px -4px rgba(0, 0, 0, 0.6);
+}
+/* Hoher Kontrast: Kacheln einfarbig, ohne Verlauf und Transparenz. Keine Schatten. */
+:root[data-vision="contrast"] .kachel { --bsl-l: var(--kt); background: var(--beschlag), var(--k1); box-shadow: none; outline: 2px solid var(--line-2); outline-offset: -1px; }
+:root[data-vision="contrast"] :is(select, .knopf, .tafel) { box-shadow: none; }
+:root[data-vision="contrast"] .buehne.tafel { background: var(--beschlag), var(--panel); }
+@media print {
+  select, .knopf, .feld, .gross, .tafel, .kachel { background-image: none !important; box-shadow: none !important; }
+}
+/* Ende Beschlag */
+</style>
+</head>
+<body>
+<div class="aurora" aria-hidden="true"><i class="a1"></i><i class="a2"></i></div>
+<div class="huelle">
+  <header class="kopf">
+    <a class="marke" href="./">
+      <svg viewBox="0 0 64 64" aria-hidden="true"><defs><linearGradient id="la" x1="1" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8D55DD"/><stop offset="1" stop-color="#8B1693"/></linearGradient><linearGradient id="ln" x1="1" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#CB3587"/><stop offset="1" stop-color="#A6002F"/></linearGradient><linearGradient id="lg" x1="1" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#AF6600"/><stop offset="1" stop-color="#6C5500"/></linearGradient></defs><rect x="9" y="9" width="22" height="22" rx="4" fill="url(#la)"/><rect x="33" y="9" width="22" height="22" rx="4" fill="url(#ln)"/><rect x="9" y="33" width="22" height="22" rx="4" fill="url(#la)"/><g transform="rotate(-7 44 44)"><rect x="33" y="33" width="22" height="22" rx="4" fill="url(#lg)"/></g><g fill="none" stroke="#F4EFFA" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 26 20 14l6 12M16.6 21.6h6.8"/><path d="M39 26V14l10 12V14"/><path d="M14 50 20 38l6 12M16.6 45.6h6.8"/><path d="M49.3 40.6A6.3 6.3 0 1 0 50.2 45H44.6" transform="rotate(-7 44 44)"/></g></svg>
+      <span><h1>Anagrammaton</h1><small data-i="unter">Anagramme, Rückwärtswörter, Palindrome</small></span>
+    </a>
+    <div class="steuer">
+      <button id="installieren" class="knopf akzent" type="button" hidden>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0-4-4m4 4 4-4M5 21h14"/></svg>
+        <span data-i="install">Installieren</span>
+      </button>
+      <label class="vh" for="sprache" data-i="sprache">Sprache</label>
+      <select id="sprache"></select>
+      <label class="vh" for="darstellung" data-i="darst">Darstellung</label>
+      <select id="darstellung"></select>
+    </div>
+  </header>
+
+  <main>
+    <section class="eingabe tafel">
+      <label class="eingabe-l" for="text" data-i="eingabeL">Wort oder Satz</label>
+      <div class="feldzeile">
+        <input id="text" class="gross" type="text" maxlength="60" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search">
+        <button id="leeren" class="mini" type="button" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+      </div>
+      <div class="optionen">
+        <label class="wahl"><span data-i="woerterbuch">Wörterbuch</span><select id="wb"></select></label>
+        <label class="schalter" id="akz-w"><input id="akz" type="checkbox"><span data-i="akzente">Akzente gleich</span></label>
+        <button id="teilen" class="knopf" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 14a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1M14 10a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg><span data-i="teilen">Link kopieren</span></button>
+      </div>
+    </section>
+
+    <section class="buehne-teil" aria-labelledby="buehne-h">
+      <h2 id="buehne-h" class="vh" data-i="buehne">Bühne</h2>
+      <div class="buehne tafel" id="buehne">
+        <div class="kacheln" id="kacheln" aria-hidden="true"></div>
+        <p class="buehne-leer" id="buehne-leer" data-i="buehneLeer">Hier landen deine Buchstaben als Kacheln.</p>
+      </div>
+      <p class="vh" id="buehne-text" aria-live="polite"></p>
+      <div class="spiel">
+        <button id="mischen" class="knopf spielknopf" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg><span data-i="mischen">Mischen</span></button>
+        <button id="invert" class="knopf spielknopf" type="button" aria-pressed="false"><span class="led" aria-hidden="true"></span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18Z" fill="currentColor"/></svg><span data-i="invert">Invert</span></button>
+        <button id="reverse" class="knopf spielknopf" type="button" aria-pressed="false"><span class="led" aria-hidden="true"></span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8h15l-4-4M21 16H6l4 4"/></svg><span data-i="reverse">Reverse</span></button>
+        <button id="ausgang" class="knopf spielknopf" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5"/></svg><span data-i="ausgang">Ausgangsstellung</span></button>
+      </div>
+    </section>
+
+    <section class="ergebnis tafel" id="ergebnis" aria-labelledby="ergebnis-h" hidden>
+      <h2 id="ergebnis-h" class="vh" data-i="trefferL">Treffer</h2>
+      <div class="reiter" role="tablist" id="reiter">
+        <button role="tab" type="button" id="tab-ein" aria-controls="p-ein" aria-selected="true"><span data-i="tEin">Ein Wort</span><span class="zahl" id="z-ein"></span></button>
+        <button role="tab" type="button" id="tab-mehr" aria-controls="p-mehr" aria-selected="false" tabindex="-1"><span data-i="tMehr">Mehrere Wörter</span><span class="zahl" id="z-mehr"></span></button>
+        <button role="tab" type="button" id="tab-rueck" aria-controls="p-rueck" aria-selected="false" tabindex="-1"><span data-i="tRueck">Rückwärts</span><span class="zahl" id="z-rueck"></span></button>
+      </div>
+      <div role="tabpanel" id="p-ein" aria-labelledby="tab-ein">
+        <p class="hinweis" id="h-ein"></p>
+        <ul class="liste" id="l-ein"></ul>
+      </div>
+      <div role="tabpanel" id="p-mehr" aria-labelledby="tab-mehr" hidden>
+        <div class="filter">
+          <label class="wahl"><span data-i="maxW">Wörter höchstens</span><select id="maxw"></select></label>
+          <label class="wahl"><span data-i="minL">Mindestlänge je Wort</span><select id="minl"></select></label>
+          <label class="wahl"><span data-i="pflicht">Muss vorkommen</span><input id="pflicht" class="feld" type="text" maxlength="30" autocomplete="off" spellcheck="false"></label>
+        </div>
+        <div class="stand"><span id="stand"></span><button id="stopp" class="knopf" type="button" hidden><span data-i="abbrechen">Abbrechen</span></button></div>
+        <div class="leiste" aria-hidden="true"><i id="balken"></i></div>
+        <ul class="liste" id="l-mehr"></ul>
+        <button id="mehr" class="knopf mehr-knopf" type="button" hidden><span data-i="mehrZeigen">Mehr zeigen</span></button>
+      </div>
+      <div role="tabpanel" id="p-rueck" aria-labelledby="tab-rueck" hidden>
+        <div class="rueck-kopf"><span class="klein" data-i="rueckGelesen">Rückwärts gelesen</span><div class="rueck-text z" id="rueck-text"></div></div>
+        <p class="urteil" id="urteil"></p>
+        <h3 data-i="rueckWoerter">Rückwärtswörter</h3>
+        <p class="hinweis" id="h-rueck"></p>
+        <ul class="liste" id="l-rueck"></ul>
+        <h3 data-i="entdecken">Entdecken</h3>
+        <div class="entdecken">
+          <div><h4 data-i="entPal">Palindrome</h4><div class="chips" id="e-pal"></div></div>
+          <div><h4 data-i="entPaare">Rückwärtspaare</h4><div class="chips" id="e-paare"></div></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="leer tafel" id="leer">
+      <h2 data-i="leerH">Probier eins davon</h2>
+      <div class="chips" id="beispiele"></div>
+      <p data-i="leerText"></p>
+    </section>
+  </main>
+
+  <footer>
+    <a href="https://dennismit2n.github.io/" data-i="werkstatt">Zur Werkstatt</a>
+    <span data-i="frei">Keine Cookies, keine Werbung.</span>
+    <span data-i="offline"></span>
+    <span data-i="ehrlich"></span>
+    <a href="https://github.com/Dennismit2n/anagrammaton/blob/main/woerter/LIZENZ.md" data-i="quelle"></a>
+    <a href="https://github.com/Dennismit2n/anagrammaton" data-i="repo">Quelltext auf GitHub (MIT)</a>
+  </footer>
+</div>
+<p class="vh" id="ansage" aria-live="polite"></p>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script type="module">
+import { einheiten, grapheme, mische, farbton, kachelFarben, rueckwaerts, istPalindrom, schluessel, akzenteMoeglich, standardMinLaenge, vergleiche, SPRACHEN } from './engine.js';
+
+/* ===================== Texte ===================== */
+const T = {
+  de: {
+    install: 'Installieren', installDone: 'Als App installiert.', sprache: 'Sprache', darst: 'Darstellung',
+    darstOpt: ['System', 'Hell', 'Dunkel', 'Hoher Kontrast dunkel', 'Hoher Kontrast hell', 'Farbenblind dunkel', 'Farbenblind hell', 'Umgekehrte Farben'],
+    unter: 'Anagramme, Rückwärtswörter, Palindrome',
+    eingabeL: 'Wort oder Satz', eingabeP: 'Wort oder Satz tippen', leeren: 'Eingabe leeren',
+    woerterbuch: 'Wörterbuch', akzente: 'Akzente gleich', akzenteT: 'ä zählt wie a, é wie e', teilen: 'Link kopieren',
+    buehne: 'Bühne', buehneLeer: 'Hier landen deine Buchstaben als Kacheln.', buehneText: s => `Auf der Bühne: ${s}`,
+    mischen: 'Mischen', mischenT: 'Kacheln in eine zufällige Reihenfolge bringen',
+    invert: 'Invert', invertT: 'Alle Kachelfarben in die Gegenfarbe kippen',
+    reverse: 'Reverse', reverseT: 'Kacheln rückwärts aufstellen',
+    ausgang: 'Ausgangsstellung', ausgangT: 'Zurück zur Reihenfolge deiner Eingabe',
+    trefferL: 'Treffer', tEin: 'Ein Wort', tMehr: 'Mehrere Wörter', tRueck: 'Rückwärts',
+    maxW: 'Wörter höchstens', auto: 'Automatisch', minL: 'Mindestlänge je Wort', pflicht: 'Muss vorkommen', pflichtP: 'Wort, das drin sein soll',
+    laedt: 'Wörterbuch wird geladen …', ladeFehler: 'Das Wörterbuch ließ sich nicht laden. Prüf die Verbindung und versuch es noch einmal.',
+    laeuft: n => `Suche läuft. Treffer: ${n}`, fertig: n => `Fertig. Treffer: ${n}`, grenze: n => `Treffer: ${n}. Mehr zeige ich nicht.`,
+    zeit: n => `Nach 4 Sekunden angehalten. Treffer: ${n}`, abbruch: n => `Abgebrochen. Treffer: ${n}`,
+    keine: 'Keine Treffer mit diesen Einstellungen.', pflichtNein: 'Das Pflichtwort passt nicht in deine Buchstaben.',
+    abbrechen: 'Abbrechen', mehrZeigen: 'Mehr zeigen',
+    keinEin: 'Kein Wort im Wörterbuch hat genau diese Buchstaben.',
+    rueckGelesen: 'Rückwärts gelesen', palJa: 'Ein Palindrom: vorwärts und rückwärts gleich.', palNein: 'Kein Palindrom.',
+    rueckWoerter: 'Rückwärtswörter', keineRueck: 'Rückwärts ergibt sich kein anderes Wort.',
+    entdecken: 'Entdecken', entPal: 'Palindrome', entPaare: 'Rückwärtspaare',
+    kopieren: t => `${t} kopieren`, spielen: w => `${w} auf der Bühne zeigen`, kopiert: 'Kopiert.', kopierFehler: 'Kopieren ging nicht. Bitte von Hand markieren.',
+    leerH: 'Probier eins davon', leerText: 'Oder tippe oben ein eigenes Wort. Ein Klick auf einen Treffer lässt die Kacheln an ihren neuen Platz fliegen.',
+    beispiele: ['Lager', 'Sterne', 'Rentner', 'Ein Esel lese nie'],
+    werkstatt: 'Zur Werkstatt', quelle: 'Wörter: wordfreq von Robyn Speer (CC BY-SA 4.0), Schimpfwörter herausgefiltert mit LDNOOBW (CC BY 4.0).',
+    repo: 'Quelltext auf GitHub (MIT)', ehrlich: 'Die Wörter kommen aus Häufigkeitslisten echter Texte, darum stehen auch Namen und seltene Formen drin.',
+    offline: 'Läuft nach dem ersten Besuch auch offline, mit den Wörterbüchern, die du schon benutzt hast.', frei: 'Keine Cookies, keine Werbung.'
+  },
+  en: {
+    install: 'Install', installDone: 'Installed as an app.', sprache: 'Language', darst: 'Appearance',
+    darstOpt: ['System', 'Light', 'Dark', 'High contrast dark', 'High contrast light', 'Colour-blind dark', 'Colour-blind light', 'Inverted colours'],
+    unter: 'Anagrams, reversals, palindromes',
+    eingabeL: 'Word or sentence', eingabeP: 'Type a word or a sentence', leeren: 'Clear input',
+    woerterbuch: 'Dictionary', akzente: 'Ignore accents', akzenteT: 'é counts as e, ü as u', teilen: 'Copy link',
+    buehne: 'Stage', buehneLeer: 'Your letters land here as tiles.', buehneText: s => `On stage: ${s}`,
+    mischen: 'Shuffle', mischenT: 'Put the tiles in a random order',
+    invert: 'Invert', invertT: 'Flip every tile colour to its opposite',
+    reverse: 'Reverse', reverseT: 'Line the tiles up backwards',
+    ausgang: 'Start position', ausgangT: 'Back to the order you typed',
+    trefferL: 'Results', tEin: 'One word', tMehr: 'Several words', tRueck: 'Backwards',
+    maxW: 'Words at most', auto: 'Automatic', minL: 'Minimum length per word', pflicht: 'Must contain', pflichtP: 'A word that has to be in it',
+    laedt: 'Loading the dictionary…', ladeFehler: 'The dictionary could not be loaded. Check your connection and try again.',
+    laeuft: n => `Searching. Results: ${n}`, fertig: n => `Done. Results: ${n}`, grenze: n => `Results: ${n}. That is the limit.`,
+    zeit: n => `Stopped after 4 seconds. Results: ${n}`, abbruch: n => `Cancelled. Results: ${n}`,
+    keine: 'No results with these settings.', pflichtNein: 'The required word does not fit into your letters.',
+    abbrechen: 'Cancel', mehrZeigen: 'Show more',
+    keinEin: 'No dictionary word has exactly these letters.',
+    rueckGelesen: 'Read backwards', palJa: 'A palindrome: the same forwards and backwards.', palNein: 'Not a palindrome.',
+    rueckWoerter: 'Reversal words', keineRueck: 'Read backwards, this gives no other word.',
+    entdecken: 'Discover', entPal: 'Palindromes', entPaare: 'Reversal pairs',
+    kopieren: t => `Copy ${t}`, spielen: w => `Show ${w} on stage`, kopiert: 'Copied.', kopierFehler: 'Copying failed. Please select it by hand.',
+    leerH: 'Try one of these', leerText: 'Or type your own word above. Click a result and the tiles fly to their new places.',
+    beispiele: ['listen', 'dormitory', 'astronomer', 'stressed'],
+    werkstatt: 'To the workshop', quelle: 'Words: wordfreq by Robyn Speer (CC BY-SA 4.0), swear words filtered out with LDNOOBW (CC BY 4.0).',
+    repo: 'Source code on GitHub (MIT)', ehrlich: 'The words come from frequency lists of real texts, so names and rare forms are in there too.',
+    offline: 'Works offline after the first visit, with the dictionaries you have already used.', frei: 'No cookies, no ads.'
+  },
+  es: {
+    install: 'Instalar', installDone: 'Instalada como app.', sprache: 'Idioma', darst: 'Apariencia',
+    darstOpt: ['Sistema', 'Claro', 'Oscuro', 'Alto contraste oscuro', 'Alto contraste claro', 'Daltónico oscuro', 'Daltónico claro', 'Colores invertidos'],
+    unter: 'Anagramas, palabras al revés, palíndromos',
+    eingabeL: 'Palabra o frase', eingabeP: 'Escribe aquí', leeren: 'Borrar',
+    woerterbuch: 'Diccionario', akzente: 'Ignorar acentos', akzenteT: 'á cuenta como a, é como e', teilen: 'Copiar enlace',
+    buehne: 'Escenario', buehneLeer: 'Aquí aterrizan tus letras como fichas.', buehneText: s => `En el escenario: ${s}`,
+    mischen: 'Mezclar', mischenT: 'Poner las fichas en orden aleatorio',
+    invert: 'Color opuesto', invertT: 'Pasar el color de cada ficha a su opuesto',
+    reverse: 'Al revés', reverseT: 'Colocar las fichas de atrás hacia delante',
+    ausgang: 'Posición inicial', ausgangT: 'Volver al orden que escribiste',
+    trefferL: 'Resultados', tEin: 'Una palabra', tMehr: 'Varias palabras', tRueck: 'Al revés',
+    maxW: 'Palabras como máximo', auto: 'Automático', minL: 'Longitud mínima por palabra', pflicht: 'Debe contener', pflichtP: 'Palabra obligatoria',
+    laedt: 'Cargando el diccionario…', ladeFehler: 'No se pudo cargar el diccionario. Revisa la conexión y vuelve a intentarlo.',
+    laeuft: n => `Buscando. Resultados: ${n}`, fertig: n => `Listo. Resultados: ${n}`, grenze: n => `Resultados: ${n}. No muestro más.`,
+    zeit: n => `Detenido tras 4 segundos. Resultados: ${n}`, abbruch: n => `Cancelado. Resultados: ${n}`,
+    keine: 'Ningún resultado con estos ajustes.', pflichtNein: 'La palabra obligatoria no cabe en tus letras.',
+    abbrechen: 'Cancelar', mehrZeigen: 'Mostrar más',
+    keinEin: 'Ninguna palabra del diccionario tiene exactamente estas letras.',
+    rueckGelesen: 'Leído al revés', palJa: 'Un palíndromo: igual al derecho y al revés.', palNein: 'No es un palíndromo.',
+    rueckWoerter: 'Palabras al revés', keineRueck: 'Al revés no sale ninguna otra palabra.',
+    entdecken: 'Descubrir', entPal: 'Palíndromos', entPaare: 'Parejas al revés',
+    kopieren: t => `Copiar ${t}`, spielen: w => `Mostrar ${w} en el escenario`, kopiert: 'Copiado.', kopierFehler: 'No se pudo copiar. Selecciónalo a mano.',
+    leerH: 'Prueba con una de estas', leerText: 'O escribe arriba tu propia palabra. Haz clic en un resultado y las fichas vuelan a su nuevo sitio.',
+    beispiele: ['amor', 'mientras', 'reconocer', 'nada'],
+    werkstatt: 'Al taller', quelle: 'Palabras: wordfreq de Robyn Speer (CC BY-SA 4.0), palabrotas filtradas con LDNOOBW (CC BY 4.0).',
+    repo: 'Código fuente en GitHub (MIT)', ehrlich: 'Las palabras vienen de listas de frecuencia de textos reales, por eso también hay nombres y formas raras.',
+    offline: 'Funciona sin conexión tras la primera visita, con los diccionarios que ya usaste.', frei: 'Sin cookies, sin anuncios.'
+  },
+  fr: {
+    install: 'Installer', installDone: 'Installée comme application.', sprache: 'Langue', darst: 'Apparence',
+    darstOpt: ['Système', 'Clair', 'Sombre', 'Contraste élevé sombre', 'Contraste élevé clair', 'Daltonien sombre', 'Daltonien clair', 'Couleurs inversées'],
+    unter: 'Anagrammes, mots à l’envers, palindromes',
+    eingabeL: 'Mot ou phrase', eingabeP: 'Tapez un mot ou une phrase', leeren: 'Effacer',
+    woerterbuch: 'Dictionnaire', akzente: 'Ignorer les accents', akzenteT: 'é compte comme e, ç comme c', teilen: 'Copier le lien',
+    buehne: 'Scène', buehneLeer: 'Vos lettres arrivent ici sous forme de jetons.', buehneText: s => `Sur scène : ${s}`,
+    mischen: 'Mélanger', mischenT: 'Mettre les jetons dans un ordre aléatoire',
+    invert: 'Couleur opposée', invertT: 'Passer chaque jeton à sa couleur opposée',
+    reverse: 'À l’envers', reverseT: 'Aligner les jetons à l’envers',
+    ausgang: 'Position de départ', ausgangT: 'Revenir à l’ordre saisi',
+    trefferL: 'Résultats', tEin: 'Un mot', tMehr: 'Plusieurs mots', tRueck: 'À l’envers',
+    maxW: 'Mots au maximum', auto: 'Automatique', minL: 'Longueur minimale par mot', pflicht: 'Doit contenir', pflichtP: 'Un mot qui doit y figurer',
+    laedt: 'Chargement du dictionnaire…', ladeFehler: 'Impossible de charger le dictionnaire. Vérifiez la connexion et réessayez.',
+    laeuft: n => `Recherche en cours. Résultats : ${n}`, fertig: n => `Terminé. Résultats : ${n}`, grenze: n => `Résultats : ${n}. Je n’en affiche pas plus.`,
+    zeit: n => `Arrêté après 4 secondes. Résultats : ${n}`, abbruch: n => `Annulé. Résultats : ${n}`,
+    keine: 'Aucun résultat avec ces réglages.', pflichtNein: 'Le mot imposé ne tient pas dans vos lettres.',
+    abbrechen: 'Annuler', mehrZeigen: 'Afficher plus',
+    keinEin: 'Aucun mot du dictionnaire n’a exactement ces lettres.',
+    rueckGelesen: 'Lu à l’envers', palJa: 'Un palindrome : identique dans les deux sens.', palNein: 'Pas un palindrome.',
+    rueckWoerter: 'Mots à l’envers', keineRueck: 'À l’envers, cela ne donne aucun autre mot.',
+    entdecken: 'Découvrir', entPal: 'Palindromes', entPaare: 'Paires à l’envers',
+    kopieren: t => `Copier ${t}`, spielen: w => `Afficher ${w} sur scène`, kopiert: 'Copié.', kopierFehler: 'La copie a échoué. Sélectionnez le texte à la main.',
+    leerH: 'Essayez l’un de ceux-ci', leerText: 'Ou tapez votre propre mot ci-dessus. Cliquez sur un résultat et les jetons s’envolent vers leur nouvelle place.',
+    beispiele: ['chien', 'patrie', 'kayak', 'écart'],
+    werkstatt: 'Vers l’atelier', quelle: 'Mots : wordfreq de Robyn Speer (CC BY-SA 4.0), gros mots filtrés avec LDNOOBW (CC BY 4.0).',
+    repo: 'Code source sur GitHub (MIT)', ehrlich: 'Les mots viennent de listes de fréquence de vrais textes, c’est pourquoi on y trouve aussi des noms et des formes rares.',
+    offline: 'Fonctionne hors ligne après la première visite, avec les dictionnaires déjà utilisés.', frei: 'Pas de cookies, pas de publicité.'
+  },
+  it: {
+    install: 'Installa', installDone: 'Installata come app.', sprache: 'Lingua', darst: 'Aspetto',
+    darstOpt: ['Sistema', 'Chiaro', 'Scuro', 'Contrasto elevato scuro', 'Contrasto elevato chiaro', 'Daltonico scuro', 'Daltonico chiaro', 'Colori invertiti'],
+    unter: 'Anagrammi, parole al contrario, palindromi',
+    eingabeL: 'Parola o frase', eingabeP: 'Scrivi qui', leeren: 'Cancella',
+    woerterbuch: 'Dizionario', akzente: 'Ignora gli accenti', akzenteT: 'è conta come e, à come a', teilen: 'Copia link',
+    buehne: 'Palco', buehneLeer: 'Qui arrivano le tue lettere come tessere.', buehneText: s => `Sul palco: ${s}`,
+    mischen: 'Mescola', mischenT: 'Metti le tessere in ordine casuale',
+    invert: 'Colore opposto', invertT: 'Porta ogni tessera al colore opposto',
+    reverse: 'Al contrario', reverseT: 'Allinea le tessere al contrario',
+    ausgang: 'Posizione iniziale', ausgangT: 'Torna all’ordine che hai scritto',
+    trefferL: 'Risultati', tEin: 'Una parola', tMehr: 'Più parole', tRueck: 'Al contrario',
+    maxW: 'Parole al massimo', auto: 'Automatico', minL: 'Lunghezza minima per parola', pflicht: 'Deve contenere', pflichtP: 'Una parola che deve esserci',
+    laedt: 'Caricamento del dizionario…', ladeFehler: 'Non è stato possibile caricare il dizionario. Controlla la connessione e riprova.',
+    laeuft: n => `Ricerca in corso. Risultati: ${n}`, fertig: n => `Fatto. Risultati: ${n}`, grenze: n => `Risultati: ${n}. Non ne mostro altri.`,
+    zeit: n => `Fermato dopo 4 secondi. Risultati: ${n}`, abbruch: n => `Annullato. Risultati: ${n}`,
+    keine: 'Nessun risultato con queste impostazioni.', pflichtNein: 'La parola obbligatoria non sta nelle tue lettere.',
+    abbrechen: 'Annulla', mehrZeigen: 'Mostra altri',
+    keinEin: 'Nessuna parola del dizionario ha esattamente queste lettere.',
+    rueckGelesen: 'Letto al contrario', palJa: 'Un palindromo: uguale in avanti e all’indietro.', palNein: 'Non è un palindromo.',
+    rueckWoerter: 'Parole al contrario', keineRueck: 'Al contrario non viene fuori nessun’altra parola.',
+    entdecken: 'Scopri', entPal: 'Palindromi', entPaare: 'Coppie al contrario',
+    kopieren: t => `Copia ${t}`, spielen: w => `Mostra ${w} sul palco`, kopiert: 'Copiato.', kopierFehler: 'Copia non riuscita. Selezionalo a mano.',
+    leerH: 'Prova uno di questi', leerText: 'Oppure scrivi sopra una parola tua. Clicca su un risultato e le tessere volano al loro nuovo posto.',
+    beispiele: ['Roma', 'moglie', 'aveva', 'nostra'],
+    werkstatt: 'Al laboratorio', quelle: 'Parole: wordfreq di Robyn Speer (CC BY-SA 4.0), parolacce filtrate con LDNOOBW (CC BY 4.0).',
+    repo: 'Codice sorgente su GitHub (MIT)', ehrlich: 'Le parole vengono da liste di frequenza di testi reali, perciò ci sono anche nomi e forme rare.',
+    offline: 'Funziona offline dopo la prima visita, con i dizionari che hai già usato.', frei: 'Niente cookie, niente pubblicità.'
+  },
+  nl: {
+    install: 'Installeren', installDone: 'Als app geïnstalleerd.', sprache: 'Taal', darst: 'Weergave',
+    darstOpt: ['Systeem', 'Licht', 'Donker', 'Hoog contrast donker', 'Hoog contrast licht', 'Kleurenblind donker', 'Kleurenblind licht', 'Omgekeerde kleuren'],
+    unter: 'Anagrammen, omkeerwoorden, palindromen',
+    eingabeL: 'Woord of zin', eingabeP: 'Typ een woord of een zin', leeren: 'Wissen',
+    woerterbuch: 'Woordenboek', akzente: 'Accenten negeren', akzenteT: 'é telt als e, ë ook', teilen: 'Link kopiëren',
+    buehne: 'Podium', buehneLeer: 'Hier landen je letters als tegels.', buehneText: s => `Op het podium: ${s}`,
+    mischen: 'Schudden', mischenT: 'De tegels in willekeurige volgorde zetten',
+    invert: 'Tegenkleur', invertT: 'Elke tegel naar de tegenovergestelde kleur draaien',
+    reverse: 'Achterstevoren', reverseT: 'De tegels achterstevoren zetten',
+    ausgang: 'Beginstand', ausgangT: 'Terug naar de volgorde die je typte',
+    trefferL: 'Resultaten', tEin: 'Eén woord', tMehr: 'Meerdere woorden', tRueck: 'Achterstevoren',
+    maxW: 'Maximaal aantal woorden', auto: 'Automatisch', minL: 'Minimale lengte per woord', pflicht: 'Moet bevatten', pflichtP: 'Een woord dat erin moet',
+    laedt: 'Woordenboek wordt geladen…', ladeFehler: 'Het woordenboek kon niet worden geladen. Controleer je verbinding en probeer het opnieuw.',
+    laeuft: n => `Zoeken. Resultaten: ${n}`, fertig: n => `Klaar. Resultaten: ${n}`, grenze: n => `Resultaten: ${n}. Meer laat ik niet zien.`,
+    zeit: n => `Gestopt na 4 seconden. Resultaten: ${n}`, abbruch: n => `Afgebroken. Resultaten: ${n}`,
+    keine: 'Geen resultaten met deze instellingen.', pflichtNein: 'Het verplichte woord past niet in je letters.',
+    abbrechen: 'Afbreken', mehrZeigen: 'Meer tonen',
+    keinEin: 'Geen woord in het woordenboek heeft precies deze letters.',
+    rueckGelesen: 'Achterstevoren gelezen', palJa: 'Een palindroom: vooruit en achteruit hetzelfde.', palNein: 'Geen palindroom.',
+    rueckWoerter: 'Omkeerwoorden', keineRueck: 'Achterstevoren levert dit geen ander woord op.',
+    entdecken: 'Ontdekken', entPal: 'Palindromen', entPaare: 'Omkeerparen',
+    kopieren: t => `${t} kopiëren`, spielen: w => `${w} op het podium tonen`, kopiert: 'Gekopieerd.', kopierFehler: 'Kopiëren lukte niet. Selecteer het met de hand.',
+    leerH: 'Probeer er een', leerText: 'Of typ hierboven je eigen woord. Klik op een resultaat en de tegels vliegen naar hun nieuwe plek.',
+    beispiele: ['worden', 'marine', 'lepel', 'moord'],
+    werkstatt: 'Naar de werkplaats', quelle: 'Woorden: wordfreq van Robyn Speer (CC BY-SA 4.0), scheldwoorden eruit gefilterd met LDNOOBW (CC BY 4.0).',
+    repo: 'Broncode op GitHub (MIT)', ehrlich: 'De woorden komen uit frequentielijsten van echte teksten, daarom staan er ook namen en zeldzame vormen in.',
+    offline: 'Werkt na het eerste bezoek ook offline, met de woordenboeken die je al gebruikt hebt.', frei: 'Geen cookies, geen reclame.'
+  },
+  pl: {
+    install: 'Zainstaluj', installDone: 'Zainstalowano jako aplikację.', sprache: 'Język', darst: 'Wygląd',
+    darstOpt: ['Systemowy', 'Jasny', 'Ciemny', 'Wysoki kontrast, ciemny', 'Wysoki kontrast, jasny', 'Dla daltonistów, ciemny', 'Dla daltonistów, jasny', 'Odwrócone kolory'],
+    unter: 'Anagramy, słowa wspak, palindromy',
+    eingabeL: 'Słowo lub zdanie', eingabeP: 'Wpisz słowo lub zdanie', leeren: 'Wyczyść',
+    woerterbuch: 'Słownik', akzente: 'Ignoruj znaki diakrytyczne', akzenteT: 'ą liczy się jak a, ó jak o', teilen: 'Kopiuj link',
+    buehne: 'Scena', buehneLeer: 'Tutaj Twoje litery lądują jako kafelki.', buehneText: s => `Na scenie: ${s}`,
+    mischen: 'Wymieszaj', mischenT: 'Ułóż kafelki w losowej kolejności',
+    invert: 'Kolor przeciwny', invertT: 'Zmień kolor każdego kafelka na przeciwny',
+    reverse: 'Wspak', reverseT: 'Ustaw kafelki od tyłu',
+    ausgang: 'Układ wyjściowy', ausgangT: 'Wróć do wpisanej kolejności',
+    trefferL: 'Wyniki', tEin: 'Jedno słowo', tMehr: 'Kilka słów', tRueck: 'Wspak',
+    maxW: 'Najwyżej słów', auto: 'Automatycznie', minL: 'Minimalna długość słowa', pflicht: 'Musi zawierać', pflichtP: 'Słowo, które ma się pojawić',
+    laedt: 'Wczytywanie słownika…', ladeFehler: 'Nie udało się wczytać słownika. Sprawdź połączenie i spróbuj ponownie.',
+    laeuft: n => `Szukam. Wyniki: ${n}`, fertig: n => `Gotowe. Wyniki: ${n}`, grenze: n => `Wyniki: ${n}. Więcej nie pokazuję.`,
+    zeit: n => `Zatrzymano po 4 sekundach. Wyniki: ${n}`, abbruch: n => `Przerwano. Wyniki: ${n}`,
+    keine: 'Brak wyników przy tych ustawieniach.', pflichtNein: 'Wymagane słowo nie mieści się w Twoich literach.',
+    abbrechen: 'Przerwij', mehrZeigen: 'Pokaż więcej',
+    keinEin: 'Żadne słowo w słowniku nie ma dokładnie tych liter.',
+    rueckGelesen: 'Czytane wspak', palJa: 'Palindrom: tak samo w przód i wspak.', palNein: 'To nie palindrom.',
+    rueckWoerter: 'Słowa wspak', keineRueck: 'Wspak nie powstaje żadne inne słowo.',
+    entdecken: 'Odkrywaj', entPal: 'Palindromy', entPaare: 'Pary wspak',
+    kopieren: t => `Kopiuj: ${t}`, spielen: w => `Pokaż ${w} na scenie`, kopiert: 'Skopiowano.', kopierFehler: 'Kopiowanie nie powiodło się. Zaznacz tekst ręcznie.',
+    leerH: 'Wypróbuj jedno z nich', leerText: 'Albo wpisz powyżej własne słowo. Kliknij wynik, a kafelki przylecą na nowe miejsca.',
+    beispiele: ['kobiety', 'ponieważ', 'zakaz', 'metal'],
+    werkstatt: 'Do warsztatu', quelle: 'Słowa: wordfreq autorstwa Robyn Speer (CC BY-SA 4.0), przekleństwa odfiltrowane listą LDNOOBW (CC BY 4.0).',
+    repo: 'Kod źródłowy na GitHubie (MIT)', ehrlich: 'Słowa pochodzą z list frekwencyjnych prawdziwych tekstów, dlatego są w nich też imiona i rzadkie formy.',
+    offline: 'Po pierwszej wizycie działa też offline, ze słownikami, których już używano.', frei: 'Bez cookies, bez reklam.'
+  },
+  pt: {
+    install: 'Instalar', installDone: 'Instalado como app.', sprache: 'Idioma', darst: 'Aparência',
+    darstOpt: ['Sistema', 'Claro', 'Escuro', 'Alto contraste escuro', 'Alto contraste claro', 'Daltônico escuro', 'Daltônico claro', 'Cores invertidas'],
+    unter: 'Anagramas, palavras ao contrário, palíndromos',
+    eingabeL: 'Palavra ou frase', eingabeP: 'Digite aqui', leeren: 'Limpar',
+    woerterbuch: 'Dicionário', akzente: 'Ignorar acentos', akzenteT: 'á conta como a, ç como c', teilen: 'Copiar link',
+    buehne: 'Palco', buehneLeer: 'Suas letras chegam aqui como peças.', buehneText: s => `No palco: ${s}`,
+    mischen: 'Embaralhar', mischenT: 'Colocar as peças em ordem aleatória',
+    invert: 'Cor oposta', invertT: 'Levar cada peça à cor oposta',
+    reverse: 'Ao contrário', reverseT: 'Enfileirar as peças de trás para frente',
+    ausgang: 'Posição inicial', ausgangT: 'Voltar à ordem que você digitou',
+    trefferL: 'Resultados', tEin: 'Uma palavra', tMehr: 'Várias palavras', tRueck: 'Ao contrário',
+    maxW: 'Palavras no máximo', auto: 'Automático', minL: 'Tamanho mínimo por palavra', pflicht: 'Deve conter', pflichtP: 'Palavra obrigatória',
+    laedt: 'Carregando o dicionário…', ladeFehler: 'Não foi possível carregar o dicionário. Verifique a conexão e tente de novo.',
+    laeuft: n => `Buscando. Resultados: ${n}`, fertig: n => `Pronto. Resultados: ${n}`, grenze: n => `Resultados: ${n}. Não mostro mais que isso.`,
+    zeit: n => `Parado após 4 segundos. Resultados: ${n}`, abbruch: n => `Cancelado. Resultados: ${n}`,
+    keine: 'Nenhum resultado com essas configurações.', pflichtNein: 'A palavra obrigatória não cabe nas suas letras.',
+    abbrechen: 'Cancelar', mehrZeigen: 'Mostrar mais',
+    keinEin: 'Nenhuma palavra do dicionário tem exatamente essas letras.',
+    rueckGelesen: 'Lido ao contrário', palJa: 'Um palíndromo: igual de frente para trás e de trás para frente.', palNein: 'Não é um palíndromo.',
+    rueckWoerter: 'Palavras ao contrário', keineRueck: 'Ao contrário, não sai nenhuma outra palavra.',
+    entdecken: 'Descobrir', entPal: 'Palíndromos', entPaare: 'Pares ao contrário',
+    kopieren: t => `Copiar ${t}`, spielen: w => `Mostrar ${w} no palco`, kopiert: 'Copiado.', kopierFehler: 'Não deu para copiar. Selecione à mão.',
+    leerH: 'Experimente uma destas', leerText: 'Ou digite acima uma palavra sua. Clique em um resultado e as peças voam para o novo lugar.',
+    beispiele: ['amor', 'pessoa', 'reviver', 'assim'],
+    werkstatt: 'Para a oficina', quelle: 'Palavras: wordfreq de Robyn Speer (CC BY-SA 4.0), palavrões filtrados com LDNOOBW (CC BY 4.0).',
+    repo: 'Código-fonte no GitHub (MIT)', ehrlich: 'As palavras vêm de listas de frequência de textos reais, por isso também aparecem nomes e formas raras.',
+    offline: 'Funciona offline depois da primeira visita, com os dicionários que você já usou.', frei: 'Sem cookies, sem anúncios.'
+  },
+  tr: {
+    install: 'Yükle', installDone: 'Uygulama olarak yüklendi.', sprache: 'Dil', darst: 'Görünüm',
+    darstOpt: ['Sistem', 'Açık', 'Koyu', 'Yüksek karşıtlık koyu', 'Yüksek karşıtlık açık', 'Renk körü koyu', 'Renk körü açık', 'Ters renkler'],
+    unter: 'Anagramlar, ters kelimeler, palindromlar',
+    eingabeL: 'Kelime veya cümle', eingabeP: 'Bir kelime veya cümle yazın', leeren: 'Temizle',
+    woerterbuch: 'Sözlük', akzente: 'Aksanları yok say', akzenteT: 'ç, c gibi; ş, s gibi sayılır', teilen: 'Bağlantıyı kopyala',
+    buehne: 'Sahne', buehneLeer: 'Harfleriniz buraya taş olarak iner.', buehneText: s => `Sahnede: ${s}`,
+    mischen: 'Karıştır', mischenT: 'Taşları rastgele sıraya dizin',
+    invert: 'Karşıt renk', invertT: 'Her taşı karşıt renge çevirin',
+    reverse: 'Tersine', reverseT: 'Taşları tersten dizin',
+    ausgang: 'Başlangıç', ausgangT: 'Yazdığınız sıraya dönün',
+    trefferL: 'Sonuçlar', tEin: 'Tek kelime', tMehr: 'Birden çok kelime', tRueck: 'Tersten',
+    maxW: 'En fazla kelime', auto: 'Otomatik', minL: 'Kelime başına en az uzunluk', pflicht: 'Zorunlu kelime', pflichtP: 'Kelime yazın',
+    laedt: 'Sözlük yükleniyor…', ladeFehler: 'Sözlük yüklenemedi. Bağlantınızı kontrol edip tekrar deneyin.',
+    laeuft: n => `Aranıyor. Sonuç: ${n}`, fertig: n => `Bitti. Sonuç: ${n}`, grenze: n => `Sonuç: ${n}. Daha fazlasını göstermiyorum.`,
+    zeit: n => `4 saniye sonra durduruldu. Sonuç: ${n}`, abbruch: n => `İptal edildi. Sonuç: ${n}`,
+    keine: 'Bu ayarlarla sonuç yok.', pflichtNein: 'Zorunlu kelime harflerinize sığmıyor.',
+    abbrechen: 'İptal', mehrZeigen: 'Daha fazla göster',
+    keinEin: 'Sözlükte tam olarak bu harflerden oluşan bir kelime yok.',
+    rueckGelesen: 'Tersten okunuşu', palJa: 'Bir palindrom: düz ve tersten aynı.', palNein: 'Palindrom değil.',
+    rueckWoerter: 'Ters kelimeler', keineRueck: 'Tersten okununca başka bir kelime çıkmıyor.',
+    entdecken: 'Keşfedin', entPal: 'Palindromlar', entPaare: 'Ters çiftler',
+    kopieren: t => `Kopyala: ${t}`, spielen: w => `Sahnede göster: ${w}`, kopiert: 'Kopyalandı.', kopierFehler: 'Kopyalanamadı. Lütfen elle seçin.',
+    leerH: 'Bunlardan birini deneyin', leerText: 'Ya da yukarıya kendi kelimenizi yazın. Bir sonuca tıklayın, taşlar yeni yerlerine uçsun.',
+    beispiele: ['zaman', 'kadınlar', 'kaçak', 'birlikte'],
+    werkstatt: 'Atölyeye', quelle: 'Kelimeler: Robyn Speer’in wordfreq listesi (CC BY-SA 4.0), küfürler LDNOOBW ile ayıklandı (CC BY 4.0).',
+    repo: 'GitHub’da kaynak kod (MIT)', ehrlich: 'Kelimeler gerçek metinlerin sıklık listelerinden geliyor, bu yüzden isimler ve nadir biçimler de var.',
+    offline: 'İlk ziyaretten sonra, daha önce kullandığınız sözlüklerle çevrimdışı da çalışır.', frei: 'Çerez yok, reklam yok.'
+  },
+  ru: {
+    install: 'Установить', installDone: 'Установлено как приложение.', sprache: 'Язык', darst: 'Оформление',
+    darstOpt: ['Системное', 'Светлое', 'Тёмное', 'Контрастное тёмное', 'Контрастное светлое', 'Для дальтоников, тёмное', 'Для дальтоников, светлое', 'Инверсия цветов'],
+    unter: 'Анаграммы, слова наоборот, палиндромы',
+    eingabeL: 'Слово или фраза', eingabeP: 'Введите слово или фразу', leeren: 'Очистить',
+    woerterbuch: 'Словарь', akzente: 'Не различать ё и е', akzenteT: 'ё считается как е', teilen: 'Копировать ссылку',
+    buehne: 'Сцена', buehneLeer: 'Здесь ваши буквы появятся в виде плиток.', buehneText: s => `На сцене: ${s}`,
+    mischen: 'Перемешать', mischenT: 'Расставить плитки в случайном порядке',
+    invert: 'Обратный цвет', invertT: 'Сменить цвет каждой плитки на противоположный',
+    reverse: 'Задом наперёд', reverseT: 'Поставить плитки в обратном порядке',
+    ausgang: 'Исходный порядок', ausgangT: 'Вернуться к введённому порядку',
+    trefferL: 'Результаты', tEin: 'Одно слово', tMehr: 'Несколько слов', tRueck: 'Наоборот',
+    maxW: 'Слов не больше', auto: 'Автоматически', minL: 'Минимальная длина слова', pflicht: 'Обязательное слово', pflichtP: 'Слово, которое должно быть',
+    laedt: 'Загружается словарь…', ladeFehler: 'Не удалось загрузить словарь. Проверьте подключение и попробуйте ещё раз.',
+    laeuft: n => `Идёт поиск. Результатов: ${n}`, fertig: n => `Готово. Результатов: ${n}`, grenze: n => `Результатов: ${n}. Больше не показываю.`,
+    zeit: n => `Остановлено через 4 секунды. Результатов: ${n}`, abbruch: n => `Прервано. Результатов: ${n}`,
+    keine: 'С этими настройками ничего не найдено.', pflichtNein: 'Обязательное слово не помещается в ваши буквы.',
+    abbrechen: 'Прервать', mehrZeigen: 'Показать ещё',
+    keinEin: 'В словаре нет слова ровно с этими буквами.',
+    rueckGelesen: 'Задом наперёд', palJa: 'Палиндром: одинаково читается в обе стороны.', palNein: 'Не палиндром.',
+    rueckWoerter: 'Слова наоборот', keineRueck: 'Задом наперёд другого слова не получается.',
+    entdecken: 'Открытия', entPal: 'Палиндромы', entPaare: 'Пары наоборот',
+    kopieren: t => `Копировать «${t}»`, spielen: w => `Показать «${w}» на сцене`, kopiert: 'Скопировано.', kopierFehler: 'Не удалось скопировать. Выделите текст вручную.',
+    leerH: 'Попробуйте одно из этих', leerText: 'Или введите выше своё слово. Нажмите на результат, и плитки перелетят на новые места.',
+    beispiele: ['вопрос', 'банка', 'доход', 'город'],
+    werkstatt: 'В мастерскую', quelle: 'Слова: wordfreq, автор Робин Спир (CC BY-SA 4.0), ругательства отфильтрованы по списку LDNOOBW (CC BY 4.0).',
+    repo: 'Исходный код на GitHub (MIT)', ehrlich: 'Слова взяты из частотных списков настоящих текстов, поэтому в них есть и имена, и редкие формы.',
+    offline: 'После первого визита работает и офлайн, со словарями, которые вы уже открывали.', frei: 'Без cookie, без рекламы.'
+  },
+  hi: {
+    install: 'इंस्टॉल करें', installDone: 'ऐप के रूप में इंस्टॉल हो गया।', sprache: 'भाषा', darst: 'रूप',
+    darstOpt: ['सिस्टम', 'हल्का', 'गहरा', 'उच्च कंट्रास्ट गहरा', 'उच्च कंट्रास्ट हल्का', 'रंगांधता-अनुकूल गहरा', 'रंगांधता-अनुकूल हल्का', 'उलटे रंग'],
+    unter: 'एनाग्राम, उलटे शब्द, पैलिंड्रोम',
+    eingabeL: 'शब्द या वाक्य', eingabeP: 'कोई शब्द या वाक्य लिखें', leeren: 'साफ़ करें',
+    woerterbuch: 'शब्दकोश', akzente: 'एक्सेंट चिह्न अनदेखा करें', akzenteT: 'é को e की तरह गिना जाता है', teilen: 'लिंक कॉपी करें',
+    buehne: 'मंच', buehneLeer: 'आपके अक्षर यहाँ टाइलों के रूप में आएँगे।', buehneText: s => `मंच पर: ${s}`,
+    mischen: 'फेंटें', mischenT: 'टाइलों को बेतरतीब क्रम में रखें',
+    invert: 'विपरीत रंग', invertT: 'हर टाइल का रंग उसके विपरीत रंग में बदलें',
+    reverse: 'उलटा क्रम', reverseT: 'टाइलों को उलटे क्रम में रखें',
+    ausgang: 'शुरुआती क्रम', ausgangT: 'आपके लिखे क्रम पर लौटें',
+    trefferL: 'नतीजे', tEin: 'एक शब्द', tMehr: 'कई शब्द', tRueck: 'उलटा',
+    maxW: 'अधिकतम शब्द', auto: 'स्वचालित', minL: 'हर शब्द की न्यूनतम लंबाई', pflicht: 'ज़रूर शामिल हो', pflichtP: 'वह शब्द जो होना चाहिए',
+    laedt: 'शब्दकोश लोड हो रहा है…', ladeFehler: 'शब्दकोश लोड नहीं हो सका। कृपया कनेक्शन जाँचें और फिर से कोशिश करें।',
+    laeuft: n => `खोज जारी है। नतीजे: ${n}`, fertig: n => `पूरा हुआ। नतीजे: ${n}`, grenze: n => `नतीजे: ${n}। इससे ज़्यादा नहीं दिखाए जाते।`,
+    zeit: n => `4 सेकंड बाद रोका गया। नतीजे: ${n}`, abbruch: n => `रद्द किया गया। नतीजे: ${n}`,
+    keine: 'इन सेटिंग्स के साथ कोई नतीजा नहीं।', pflichtNein: 'ज़रूरी शब्द आपके अक्षरों में नहीं समाता।',
+    abbrechen: 'रद्द करें', mehrZeigen: 'और दिखाएँ',
+    keinEin: 'शब्दकोश में ठीक इन्हीं अक्षरों वाला कोई शब्द नहीं है।',
+    rueckGelesen: 'उलटा पढ़ने पर', palJa: 'पैलिंड्रोम: आगे और पीछे से एक जैसा।', palNein: 'पैलिंड्रोम नहीं है।',
+    rueckWoerter: 'उलटे शब्द', keineRueck: 'उलटा पढ़ने पर कोई दूसरा शब्द नहीं बनता।',
+    entdecken: 'खोजें', entPal: 'पैलिंड्रोम', entPaare: 'उलटे जोड़े',
+    kopieren: t => `${t} कॉपी करें`, spielen: w => `${w} को मंच पर दिखाएँ`, kopiert: 'कॉपी हो गया।', kopierFehler: 'कॉपी नहीं हो सका। कृपया हाथ से चुनें।',
+    leerH: 'इनमें से कोई आज़माएँ', leerText: 'या ऊपर अपना शब्द लिखें। किसी नतीजे पर क्लिक करें, टाइलें अपनी नई जगह पर उड़ जाएँगी।',
+    beispiele: ['करता', 'जाता', 'मलयालम', 'नमन'],
+    werkstatt: 'वर्कशॉप पर जाएँ', quelle: 'शब्द: Robyn Speer का wordfreq (CC BY-SA 4.0), अपशब्द LDNOOBW से हटाए गए (CC BY 4.0)।',
+    repo: 'GitHub पर सोर्स कोड (MIT)', ehrlich: 'शब्द असली लेखों की आवृत्ति सूचियों से आते हैं, इसलिए इनमें नाम और दुर्लभ रूप भी हैं।',
+    offline: 'पहली बार खोलने के बाद, पहले इस्तेमाल किए गए शब्दकोशों के साथ ऑफ़लाइन भी चलता है।', frei: 'कोई कुकी नहीं, कोई विज्ञापन नहीं।'
+  },
+  zh: {
+    install: '安装', installDone: '已作为应用安装。', sprache: '语言', darst: '外观',
+    darstOpt: ['跟随系统', '浅色', '深色', '高对比度深色', '高对比度浅色', '色盲友好深色', '色盲友好浅色', '反转颜色'],
+    unter: '变位词、倒读词、回文',
+    eingabeL: '词语或句子', eingabeP: '输入一个词或一句话', leeren: '清空',
+    woerterbuch: '词典', akzente: '忽略重音符号', akzenteT: 'é 按 e 计算', teilen: '复制链接',
+    buehne: '舞台', buehneLeer: '你的字会以方块的形式落在这里。', buehneText: s => `舞台上：${s}`,
+    mischen: '打乱', mischenT: '把方块随机排列',
+    invert: '对比色', invertT: '把每个方块换成对比色',
+    reverse: '倒序', reverseT: '把方块倒过来排列',
+    ausgang: '初始顺序', ausgangT: '回到你输入的顺序',
+    trefferL: '结果', tEin: '单个词', tMehr: '多个词', tRueck: '倒读',
+    maxW: '最多词数', auto: '自动', minL: '每个词的最短长度', pflicht: '必须包含', pflichtP: '必须出现的词',
+    laedt: '正在加载词典……', ladeFehler: '无法加载词典。请检查网络连接后重试。',
+    laeuft: n => `正在搜索。结果：${n}`, fertig: n => `完成。结果：${n}`, grenze: n => `结果：${n}。不再显示更多。`,
+    zeit: n => `4 秒后已停止。结果：${n}`, abbruch: n => `已取消。结果：${n}`,
+    keine: '在这些设置下没有结果。', pflichtNein: '必须包含的词放不进你的字里。',
+    abbrechen: '取消', mehrZeigen: '显示更多',
+    keinEin: '词典中没有恰好由这些字组成的词。',
+    rueckGelesen: '倒过来读', palJa: '是回文：正读倒读都一样。', palNein: '不是回文。',
+    rueckWoerter: '倒读词', keineRueck: '倒过来读不会得到其他词。',
+    entdecken: '发现', entPal: '回文', entPaare: '倒读词对',
+    kopieren: t => `复制“${t}”`, spielen: w => `在舞台上显示“${w}”`, kopiert: '已复制。', kopierFehler: '复制失败。请手动选择。',
+    leerH: '试试这些', leerText: '也可以在上方输入你自己的词。点一下结果，方块就会飞到新的位置。',
+    beispiele: ['蜂蜜', '故事', '上海', '是不是'],
+    werkstatt: '返回工坊', quelle: '词语：Robyn Speer 的 wordfreq（CC BY-SA 4.0），粗话已用 LDNOOBW 过滤（CC BY 4.0）。',
+    repo: 'GitHub 上的源代码（MIT）', ehrlich: '这些词来自真实文本的词频表，所以也包含人名和少见的形式。',
+    offline: '首次访问后可离线使用，仅限已用过的词典。', frei: '无 Cookie，无广告。'
+  },
+  ja: {
+    install: 'インストール', installDone: 'アプリとしてインストールしました。', sprache: '言語', darst: '表示',
+    darstOpt: ['システム', 'ライト', 'ダーク', 'ハイコントラスト（ダーク）', 'ハイコントラスト（ライト）', '色覚サポート（ダーク）', '色覚サポート（ライト）', '色反転'],
+    unter: 'アナグラム、逆さ言葉、回文',
+    eingabeL: '単語または文', eingabeP: '単語か文を入力してください', leeren: '消去',
+    woerterbuch: '辞書', akzente: 'アクセント記号を無視', akzenteT: 'é を e として数えます', teilen: 'リンクをコピー',
+    buehne: 'ステージ', buehneLeer: '文字がここにタイルとして並びます。', buehneText: s => `ステージ：${s}`,
+    mischen: 'シャッフル', mischenT: 'タイルをランダムな順番に並べます',
+    invert: '反対色', invertT: 'すべてのタイルを反対色にします',
+    reverse: '逆順', reverseT: 'タイルを逆の順番に並べます',
+    ausgang: '元の順番', ausgangT: '入力した順番に戻します',
+    trefferL: '結果', tEin: '1語', tMehr: '複数の語', tRueck: '逆さ読み',
+    maxW: '最大語数', auto: '自動', minL: '1語あたりの最小文字数', pflicht: '必ず含む語', pflichtP: '必ず入れたい語',
+    laedt: '辞書を読み込んでいます…', ladeFehler: '辞書を読み込めませんでした。接続を確認して、もう一度お試しください。',
+    laeuft: n => `検索中。結果：${n}`, fertig: n => `完了。結果：${n}`, grenze: n => `結果：${n}。これ以上は表示しません。`,
+    zeit: n => `4 秒で停止しました。結果：${n}`, abbruch: n => `中止しました。結果：${n}`,
+    keine: 'この設定では結果がありません。', pflichtNein: '必ず含む語が文字に収まりません。',
+    abbrechen: '中止', mehrZeigen: 'さらに表示',
+    keinEin: 'ちょうどこの文字でできた語は辞書にありません。',
+    rueckGelesen: '逆から読むと', palJa: '回文です：前から読んでも後ろから読んでも同じです。', palNein: '回文ではありません。',
+    rueckWoerter: '逆さ言葉', keineRueck: '逆から読んでも別の語にはなりません。',
+    entdecken: '見つける', entPal: '回文', entPaare: '逆さ言葉のペア',
+    kopieren: t => `「${t}」をコピー`, spielen: w => `「${w}」をステージに表示`, kopiert: 'コピーしました。', kopierFehler: 'コピーできませんでした。手動で選択してください。',
+    leerH: 'こちらを試してみてください', leerText: '上に自分の言葉を入力することもできます。結果をクリックすると、タイルが新しい場所へ飛んでいきます。',
+    beispiele: ['会社', '日本', 'つまり', 'トマト'],
+    werkstatt: '工房へ戻る', quelle: '単語：Robyn Speer の wordfreq（CC BY-SA 4.0）、卑語は LDNOOBW で除外（CC BY 4.0）。',
+    repo: 'GitHub のソースコード（MIT）', ehrlich: '単語は実際の文章の頻度リストから取っているため、人名や珍しい形も含まれます。',
+    offline: '初回アクセス後は、使ったことのある辞書でオフラインでも使えます。', frei: 'Cookie なし、広告なし。'
+  },
+  ko: {
+    install: '설치', installDone: '앱으로 설치되었습니다.', sprache: '언어', darst: '화면 모드',
+    darstOpt: ['시스템', '라이트', '다크', '고대비 다크', '고대비 라이트', '색각 배려 다크', '색각 배려 라이트', '색상 반전'],
+    unter: '애너그램, 뒤집은 단어, 회문',
+    eingabeL: '단어 또는 문장', eingabeP: '단어나 문장을 입력하세요', leeren: '지우기',
+    woerterbuch: '사전', akzente: '악센트 무시', akzenteT: 'é를 e로 셉니다', teilen: '링크 복사',
+    buehne: '무대', buehneLeer: '글자가 여기에 타일로 놓입니다.', buehneText: s => `무대 위: ${s}`,
+    mischen: '섞기', mischenT: '타일을 무작위 순서로 놓습니다',
+    invert: '반대색', invertT: '모든 타일을 반대색으로 바꿉니다',
+    reverse: '거꾸로', reverseT: '타일을 거꾸로 놓습니다',
+    ausgang: '처음 순서', ausgangT: '입력한 순서로 돌아갑니다',
+    trefferL: '결과', tEin: '한 단어', tMehr: '여러 단어', tRueck: '거꾸로',
+    maxW: '최대 단어 수', auto: '자동', minL: '단어별 최소 길이', pflicht: '반드시 포함', pflichtP: '꼭 들어갈 단어',
+    laedt: '사전을 불러오는 중…', ladeFehler: '사전을 불러오지 못했습니다. 연결을 확인하고 다시 시도하세요.',
+    laeuft: n => `검색 중입니다. 결과: ${n}`, fertig: n => `완료. 결과: ${n}`, grenze: n => `결과: ${n}. 더는 표시하지 않습니다.`,
+    zeit: n => `4초 후 멈췄습니다. 결과: ${n}`, abbruch: n => `취소했습니다. 결과: ${n}`,
+    keine: '이 설정으로는 결과가 없습니다.', pflichtNein: '필수 단어가 글자 안에 들어가지 않습니다.',
+    abbrechen: '취소', mehrZeigen: '더 보기',
+    keinEin: '사전에 정확히 이 글자로 된 단어가 없습니다.',
+    rueckGelesen: '거꾸로 읽으면', palJa: '회문입니다: 앞으로 읽어도 뒤로 읽어도 같습니다.', palNein: '회문이 아닙니다.',
+    rueckWoerter: '뒤집은 단어', keineRueck: '거꾸로 읽어도 다른 단어가 되지 않습니다.',
+    entdecken: '찾아보기', entPal: '회문', entPaare: '뒤집은 단어 짝',
+    kopieren: t => `${t} 복사`, spielen: w => `무대에 ${w} 보이기`, kopiert: '복사했습니다.', kopierFehler: '복사하지 못했습니다. 직접 선택해 주세요.',
+    leerH: '이 중 하나를 눌러 보세요', leerText: '위에 직접 단어를 입력해도 됩니다. 결과를 누르면 타일이 새 자리로 날아갑니다.',
+    beispiele: ['지금', '한국', '토마토', '주유소'],
+    werkstatt: '작업실로', quelle: '단어: Robyn Speer의 wordfreq (CC BY-SA 4.0), 욕설은 LDNOOBW로 걸러냄 (CC BY 4.0).',
+    repo: 'GitHub 소스 코드 (MIT)', ehrlich: '단어는 실제 글의 빈도 목록에서 가져왔기 때문에 이름과 드문 형태도 들어 있습니다.',
+    offline: '처음 방문한 뒤에는 이미 쓴 사전으로 오프라인에서도 작동합니다.', frei: '쿠키 없음, 광고 없음.'
+  }
+};
+const NAMEN = { de: 'Deutsch', en: 'English', es: 'Español', fr: 'Français', it: 'Italiano', nl: 'Nederlands', pl: 'Polski', pt: 'Português (Brasil)', tr: 'Türkçe', ru: 'Русский', hi: 'हिन्दी', zh: '中文（简体）', ja: '日本語', ko: '한국어' };
+const DARST = ['system', 'light', 'dark', 'hc-dark', 'hc-light', 'cvd-dark', 'cvd-light', 'invert'];
+const ICON_KOPIE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>';
+const ICON_JA = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>';
+const ICON_NEIN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M8 12h8"/></svg>';
+
+/* ===================== Zustand und Hilfen ===================== */
+const S = {
+  ui: 'de', wb: 'de', wbEigen: false, akz: false, text: '',
+  inv: false, invT: 0, rev: false, basis: [],
+  maxW: 0, minL: 0, pflicht: '', tab: 'ein', zeigen: 150,
+  id: 0, laedt: false, fehler: false, ein: [], mehr: [], mehrSortiert: true, rueckW: [], pal: false,
+  stand: { laeuft: false, grund: null, anzahl: 0, start: 0 }, ent: {}
+};
+const $ = id => document.getElementById(id);
+const L = () => T[S.ui];
+const ruhig = matchMedia('(prefers-reduced-motion: reduce)');
+function el(tag, a = {}) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(a)) {
+    if (k === 'text') e.textContent = v;
+    else if (k === 'html') e.innerHTML = v;
+    else e.setAttribute(k, v);
+  }
+  return e;
+}
+function speichern(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+function laden(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+const zahl = n => new Intl.NumberFormat(S.ui === 'pt' ? 'pt-BR' : S.ui).format(n);
+let toastUhr = 0;
+function toast(msg) {
+  const t = $('toast'); t.textContent = msg; t.classList.add('an');
+  clearTimeout(toastUhr); toastUhr = setTimeout(() => t.classList.remove('an'), 2400);
+}
+function ansage(msg) { const a = $('ansage'); a.textContent = ''; setTimeout(() => { a.textContent = msg; }, 30); }
+async function kopiere(text) {
+  try { await navigator.clipboard.writeText(text); toast(L().kopiert); }
+  catch (e) {
+    const ta = el('textarea', { style: 'position:fixed;opacity:0' }); ta.value = text; document.body.append(ta); ta.select();
+    let ok = false; try { ok = document.execCommand('copy'); } catch (x) {}
+    ta.remove(); toast(ok ? L().kopiert : L().kopierFehler);
+  }
+}
+
+/* ===================== Buchstaben in Farbe ===================== */
+// Jede Einheit eines Textes als <span> mit ihrem Farbton (für Trefferlisten, Beispiele, Rückwärtsfassung).
+function bunt(ziel, text, lang = S.wb) {
+  for (const g of grapheme(text, lang)) {
+    if (/^\s+$/u.test(g)) { ziel.append(el('span', { class: 'lz' })); continue; }
+    const u = einheiten(g, lang, S.akz)[0];
+    const s = el('span', { text: g });
+    if (u) s.style.setProperty('--h', farbton(u).toFixed(1));
+    ziel.append(s);
+  }
+  return ziel;
+}
+
+/* ===================== Bühne ===================== */
+let kacheln = [];   // { el, u }
+function tokens(text) {
+  const t = [];
+  for (const w of String(text).split(/[^\p{L}\p{M}]+/u)) {
+    const u = einheiten(w, S.wb, S.akz);
+    if (!u.length) continue;
+    if (t.length) t.push(null);
+    t.push(...u);
+  }
+  return t;
+}
+const sichtbar = () => (S.rev ? S.basis.slice().reverse() : S.basis);
+function aufschrift(u) { return u === 'ß' ? 'ẞ' : u.toLocaleUpperCase(S.wb); }
+const modus = () => (document.documentElement.getAttribute('data-vision') === 'contrast' ? 'kontrast' : 'normal');
+function faerbe(e, u) {
+  const f = kachelFarben((farbton(u) + 180 * S.invT) % 360, modus());
+  e.style.setProperty('--k1', f.k1); e.style.setProperty('--k2', f.k2);
+  e.style.setProperty('--kt', f.text);
+}
+function buehnenVerlauf() {
+  const b = $('buehne'), ein = tokens(S.text).filter(Boolean);
+  b.style.setProperty('--winkel', S.rev ? '270deg' : '90deg');
+  if (!ein.length) return;
+  const g = u => kachelFarben((farbton(u) + 180 * S.invT) % 360).glow;
+  b.style.setProperty('--b1', g(ein[0])); b.style.setProperty('--b2', g(ein[ein.length - 1]));
+}
+function alleFaerben() { for (const k of kacheln) faerbe(k.el, k.u); buehnenVerlauf(); }
+function neueKachel(u) {
+  const e = el('span', { class: 'kachel' }), a = aufschrift(u);
+  e.append(el('b', { text: a }));
+  if (Array.from(a).length > 2) e.classList.add('breit');
+  faerbe(e, u);
+  return { el: e, u };
+}
+// Kachelgröße: so groß wie möglich, solange die Bühne nicht zu hoch wird. Ganze Wörter brechen um,
+// ein Wort, das breiter ist als die Bühne (etwa nach dem Mischen), bricht in sich um.
+function zeilen(kz, woerter, breite) {
+  const g = kz * 0.14, s = kz * 0.46;
+  let z = 0, frei = -1;
+  for (const n of woerter) {
+    const w = n * kz + (n - 1) * g;
+    if (w > breite) { z += Math.ceil(n / Math.max(1, Math.floor((breite + g) / (kz + g)))); frei = -1; continue; }
+    if (frei >= w + s) frei -= w + s; else { z++; frei = breite - w; }
+  }
+  return z;
+}
+function groesse() {
+  const box = $('kacheln'), woerter = [...box.children].map(w => w.children.length);
+  const breite = (box.clientWidth || 300) - 1, schmal = breite < 520;
+  const min = schmal ? 28 : 36, budget = schmal ? 180 : 230;
+  const gross = schmal ? 54 : 72;
+  const hoch = k => zeilen(k, woerter, breite) * k * 1.14 > budget;
+  const bricht = k => woerter.some(n => n * k + (n - 1) * k * 0.14 > breite);
+  // Lieber kleinere Kacheln als ein Wort, das in sich umbricht; erst wenn das nicht reicht, darf es brechen.
+  let kz = gross;
+  while (kz > min && (hoch(kz) || bricht(kz))) kz -= 2;
+  if (bricht(kz)) { kz = gross; while (kz > min && hoch(kz)) kz -= 2; }
+  box.style.setProperty('--kz', kz + 'px');
+}
+// FLIP: alte Plätze merken, neu anordnen, dann jede Kachel vom alten zum neuen Platz fliegen lassen.
+// Gleiche Buchstaben behalten ihre Kachel. Wer nach rechts fliegt, nimmt einen kleinen Bogen nach
+// oben, wer nach links fliegt, nach unten: so gleiten die Kacheln aneinander vorbei.
+function zeige(folge, fliegen = true) {
+  const box = $('kacheln');
+  const vorher = new Map();
+  for (const k of kacheln) { vorher.set(k, k.el.getBoundingClientRect()); k.el.getAnimations().forEach(a => a.cancel()); }
+  const frei = kacheln.slice(), neu = [], kinder = [];
+  let wort = null;   // jedes Wort ist eine Gruppe, die nur als Ganzes umbricht
+  for (const u of folge) {
+    if (u === null) { wort = null; continue; }
+    if (!wort) { wort = el('span', { class: 'wort' }); kinder.push(wort); }
+    const i = frei.findIndex(k => k.u === u);
+    const k = i >= 0 ? frei.splice(i, 1)[0] : neueKachel(u);
+    wort.append(k.el); neu.push(k);
+  }
+  box.replaceChildren(...kinder);
+  kacheln = neu;
+  groesse();
+  $('buehne-leer').hidden = kacheln.length > 0;
+  if (!fliegen || ruhig.matches) return;
+  kacheln.forEach((k, i) => {
+    const a = vorher.get(k);
+    if (!a) {
+      k.el.animate([{ opacity: 0, transform: 'scale(.84)', transformOrigin: '50% 50%' }, { opacity: 1, transform: 'none', transformOrigin: '50% 50%' }], { duration: 300, easing: 'cubic-bezier(.2, .7, .3, 1)' });
+      return;
+    }
+    const b = k.el.getBoundingClientRect();
+    const dx = a.left - b.left, dy = a.top - b.top, s0 = b.width ? a.width / b.width : 1;
+    if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5 && Math.abs(s0 - 1) < 0.01) return;
+    const dauer = Math.round(470 + Math.min(130, Math.hypot(dx, dy) * 0.3));
+    const bogen = Math.sign(dx) * Math.min(24, Math.abs(dx) * 0.16);
+    const bilder = [];
+    for (let s = 0; s <= 10; s++) {
+      const t = s / 10;
+      bilder.push({ offset: t, transform: `translate(${(dx * (1 - t)).toFixed(1)}px, ${(dy * (1 - t) + bogen * 4 * t * (1 - t)).toFixed(1)}px) scale(${(s0 + (1 - s0) * t).toFixed(3)})` });
+    }
+    k.el.style.zIndex = dx < 0 ? '2' : '1';
+    const an = k.el.animate(bilder, { duration: dauer, delay: Math.min(i * 10, 50), easing: 'cubic-bezier(.33, .8, .25, 1)', fill: 'backwards' });
+    an.onfinish = an.oncancel = () => { k.el.style.zIndex = ''; };
+  });
+}
+function buehneAnsagen() {
+  const t = sichtbar().map(u => (u === null ? ' ' : u)).join('');
+  if (t) $('buehne-text').textContent = L().buehneText(t);
+}
+function setzeRev(an) {
+  S.rev = an;
+  $('reverse').setAttribute('aria-pressed', String(an));
+  buehnenVerlauf();
+}
+let invBild = 0;
+function setzeInv(an, weich) {
+  S.inv = an;
+  $('invert').setAttribute('aria-pressed', String(an));
+  for (const id of ['ergebnis', 'leer']) $(id).style.setProperty('--dh', an ? '180' : '0');
+  cancelAnimationFrame(invBild);
+  const ziel = an ? 1 : 0;
+  if (!weich || ruhig.matches) { S.invT = ziel; alleFaerben(); return; }
+  const von = S.invT, t0 = performance.now(), dauer = 620;
+  const bild = jetzt => {
+    const p = Math.min(1, (jetzt - t0) / dauer);
+    const e = p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2;
+    S.invT = von + (ziel - von) * e;
+    alleFaerben();
+    if (p < 1) invBild = requestAnimationFrame(bild);
+  };
+  invBild = requestAnimationFrame(bild);
+}
+function spiele(text) {
+  S.basis = tokens(text);
+  setzeRev(false);
+  zeige(sichtbar());
+  buehneAnsagen();
+  hashSchreiben();
+}
+
+/* ===================== Suche über den Worker ===================== */
+let worker = null;
+function starteWorker() {
+  try {
+    worker = new Worker('./worker.js', { type: 'module' });
+    worker.onmessage = e => nachricht(e.data);
+    worker.onerror = () => { S.fehler = true; S.stand.laeuft = false; zeichneAlles(); };
+  } catch (e) { worker = null; S.fehler = true; }
+}
+let suchUhr = 0;
+function sucheBald(ms = 220) { clearTimeout(suchUhr); suchUhr = setTimeout(suche, ms); }
+function suche() {
+  clearTimeout(suchUhr);
+  S.id++;
+  S.ein = []; S.mehr = []; S.mehrSortiert = true; S.rueckW = []; S.zeigen = 150; S.fehler = false;
+  S.pal = istPalindrom(S.text, S.wb, S.akz);
+  const n = einheiten(S.text, S.wb, S.akz).length;
+  S.stand = { laeuft: n >= 2, grund: null, anzahl: 0, start: performance.now() };
+  zeichneAlles();
+  if (!worker) return;
+  worker.postMessage({
+    typ: 'suche', id: S.id, lang: S.wb, akz: S.akz, text: n >= 2 ? S.text : '',
+    maxWorte: S.maxW, minLaenge: S.minL || standardMinLaenge(S.wb), pflicht: S.pflicht
+  });
+}
+function nachricht(m) {
+  if (m.typ === 'entdecken') { S.ent[m.lang + (S.akz ? '|1' : '')] = m; if (m.id === S.id) zeichneEntdecken(); return; }
+  if (m.id !== S.id) return;
+  if (m.typ === 'laedt') { S.laedt = true; zeichneHinweise(); return; }
+  if (m.typ === 'fehler') { S.laedt = false; S.fehler = true; S.stand.laeuft = false; zeichneAlles(); return; }
+  S.laedt = false;
+  if (m.typ === 'einwort') { S.ein = m.treffer; zeichneEin(); }
+  else if (m.typ === 'rueck') { S.rueckW = m.treffer; zeichneRueck(); }
+  else if (m.typ === 'schub') {
+    if (m.treffer.length) { S.mehr.push(...m.treffer); S.mehrSortiert = false; }
+    S.stand.anzahl = m.anzahl;
+    planeMehr();
+  } else if (m.typ === 'fertig') {
+    S.stand.laeuft = false; S.stand.grund = m.grund; S.stand.anzahl = m.anzahl;
+    planeMehr();
+    ansageMehr();
+  }
+}
+let ansageUhr = 0, letzteAnsage = '', letzteEingabe = 0;
+function ansageMehr() {
+  clearTimeout(ansageUhr);
+  ansageUhr = setTimeout(() => {
+    const t = standText();
+    if (S.tab === 'mehr' && !S.stand.laeuft && t !== letzteAnsage) { letzteAnsage = t; ansage(t); }
+  }, Math.max(0, 1000 - (performance.now() - letzteEingabe)));
+}
+// Laufende Zähler und Listen wechseln höchstens alle 0,5 s.
+let mehrUhr = 0, mehrZuletzt = 0;
+function planeMehr() {
+  if (mehrUhr) return;
+  mehrUhr = setTimeout(() => { mehrUhr = 0; mehrZuletzt = performance.now(); zeichneMehr(); }, Math.max(0, 500 - (performance.now() - mehrZuletzt)));
+}
+
+/* ===================== Zeichnen ===================== */
+function eintrag(woerter, spielbar = true) {
+  const text = woerter.join(' ');
+  const li = el('li', { class: spielbar ? 't' : 't nur' });
+  const b = el(spielbar ? 'button' : 'span', { class: 'spielen z' });
+  if (spielbar) { b.type = 'button'; b.dataset.t = text; b.setAttribute('aria-label', L().spielen(text)); }
+  woerter.forEach((w, i) => { if (i) b.append(el('span', { class: 'lz' })); bunt(b, w); });
+  const c = el('button', { class: 'mini kopie', type: 'button', 'data-t': text, 'aria-label': L().kopieren(text), title: L().kopieren(text), html: ICON_KOPIE });
+  li.append(b, c);
+  return li;
+}
+// Liste neu füllen, ohne dass der Fokus verloren geht: der Knopf mit demselben Text und derselben Rolle
+// bekommt ihn zurück; ist der Treffer verdrängt, der Knopf an derselben Stelle; nur bei leerer Liste der Reiter.
+function ersetzeListe(ul, kinder) {
+  const a = document.activeElement, hatte = ul.contains(a) && a.dataset.t !== undefined;
+  const t = hatte && a.dataset.t, kopie = hatte && a.classList.contains('kopie');
+  const platz = hatte ? [...ul.children].indexOf(a.closest('li')) : -1;
+  ul.replaceChildren(...kinder);
+  if (!hatte) return;
+  const gleich = [...ul.querySelectorAll('button[data-t]')].filter(x => x.classList.contains('kopie') === kopie);
+  const b = gleich.find(x => x.dataset.t === t) || gleich[Math.min(platz, gleich.length - 1)];
+  (b || $('tab-' + S.tab)).focus();
+}
+// Knopf verstecken; hat er gerade den Fokus, geht der vorher an ziel().
+function verstecke(id, weg, ziel) {
+  const e = $(id);
+  if (weg && !e.hidden && document.activeElement === e) (ziel() || $('tab-' + S.tab)).focus();
+  e.hidden = weg;
+}
+function standText() {
+  const s = S.stand, n = zahl(s.anzahl), l = L();
+  if (S.fehler) return l.ladeFehler;
+  if (S.laedt) return l.laedt;
+  if (s.laeuft) return l.laeuft(n);
+  if (s.grund === 'pflicht') return l.pflichtNein;
+  if (s.grund === 'abbruch') return l.abbruch(n);
+  if (!s.anzahl) return l.keine;
+  if (s.grund === 'grenze') return l.grenze(n);
+  if (s.grund === 'zeit') return l.zeit(n);
+  return l.fertig(n);
+}
+function zeichneEin() {
+  const ul = $('l-ein');
+  ersetzeListe(ul, S.ein.map(w => eintrag([w])));
+  $('z-ein').textContent = S.ein.length ? zahl(S.ein.length) : '';
+  zeichneHinweise();
+}
+function zeichneMehr() {
+  if (!S.mehrSortiert) { S.mehr.sort(vergleiche); S.mehrSortiert = true; }
+  // Die Engine behält nur die besten Treffer; was sie verdrängt hat, steht hinten und fällt hier weg.
+  if (S.mehr.length > S.stand.anzahl) S.mehr.length = S.stand.anzahl;
+  ersetzeListe($('l-mehr'), S.mehr.slice(0, S.zeigen).map(t => eintrag(t.w)));
+  $('z-mehr').textContent = S.mehr.length ? zahl(S.mehr.length) : '';
+  verstecke('mehr', S.mehr.length <= S.zeigen, () => $('l-mehr').lastElementChild?.querySelector('button'));
+  $('stand').textContent = standText();
+  verstecke('stopp', !S.stand.laeuft, () => $('tab-mehr'));
+  const anteil = S.stand.laeuft ? Math.min(1, (performance.now() - S.stand.start) / 4000) : (S.stand.anzahl || S.stand.grund ? 1 : 0);
+  $('balken').style.width = (anteil * 100).toFixed(1) + '%';
+  if (S.stand.laeuft) planeMehr();
+}
+function zeichneRueck() {
+  const rt = $('rueck-text'); rt.textContent = '';
+  bunt(rt, rueckwaerts(S.text.trim(), S.wb));
+  const u = $('urteil');
+  u.className = S.pal ? 'urteil' : 'urteil nein';
+  u.innerHTML = S.pal ? ICON_JA : ICON_NEIN;
+  u.append(el('span', { text: S.pal ? L().palJa : L().palNein }));
+  // Ein Rückwärtswort lässt sich auf der Bühne spielen, wenn es genau die Buchstaben der Eingabe hat.
+  const alle = schluessel(einheiten(S.text, S.wb, S.akz));
+  ersetzeListe($('l-rueck'), S.rueckW.map(p => {
+    const li = eintrag([p.rueck], schluessel(einheiten(p.rueck, S.wb, S.akz)) === alle);
+    const b = li.firstChild;   // Anzeige: wort ↔ rückwärts
+    b.replaceChildren();
+    bunt(b, p.wort); b.append(el('span', { class: 'pf', text: '↔' })); bunt(b, p.rueck);
+    return li;
+  }));
+  const n = S.rueckW.length + (S.pal ? 1 : 0);
+  $('z-rueck').textContent = n ? zahl(n) : '';
+  zeichneHinweise();
+}
+function zeichneEntdecken() {
+  const e = S.ent[S.wb + (S.akz ? '|1' : '')] || S.ent[S.wb];
+  const pal = $('e-pal'), paare = $('e-paare');
+  pal.textContent = ''; paare.textContent = '';
+  if (!e) return;
+  for (const w of e.palindrome) { const b = el('button', { class: 'chip z', type: 'button', 'data-w': w }); bunt(b, w); pal.append(b); }
+  for (const [a, z] of e.paare) {
+    const b = el('button', { class: 'chip z', type: 'button', 'data-w': a });
+    bunt(b, a); b.append(el('span', { class: 'pf', text: '↔' })); bunt(b, z);
+    paare.append(b);
+  }
+}
+function zeichneHinweise() {
+  const l = L(), warte = S.laedt ? l.laedt : S.fehler ? l.ladeFehler : '';
+  $('h-ein').textContent = warte || (S.ein.length ? '' : l.keinEin);
+  $('h-ein').hidden = !$('h-ein').textContent;
+  $('h-rueck').textContent = warte || (S.rueckW.length ? '' : l.keineRueck);
+  $('h-rueck').hidden = !$('h-rueck').textContent;
+  $('stand').textContent = standText();
+}
+function zeichneBeispiele() {
+  const box = $('beispiele'); box.textContent = '';
+  for (const w of L().beispiele) {
+    const b = el('button', { class: 'chip z', type: 'button', 'data-w': w });
+    bunt(b, w, S.ui);
+    box.append(b);
+  }
+}
+function zeichneAlles() {
+  const leer = einheiten(S.text, S.wb, S.akz).length === 0;
+  $('ergebnis').hidden = leer; $('leer').hidden = !leer;
+  $('leeren').hidden = !S.text;
+  zeichneEin(); zeichneMehr(); zeichneRueck(); zeichneEntdecken();
+}
+
+/* ===================== Reiter ===================== */
+const REITER = ['ein', 'mehr', 'rueck'];
+function waehleReiter(r, fokus) {
+  S.tab = r;
+  for (const x of REITER) {
+    const t = $('tab-' + x), an = x === r;
+    t.setAttribute('aria-selected', String(an)); t.tabIndex = an ? 0 : -1;
+    $('p-' + x).hidden = !an;
+  }
+  if (fokus) $('tab-' + r).focus();
+}
+
+/* ===================== Link-Anker ===================== */
+function hashSchreiben() {
+  const p = new URLSearchParams();
+  if (S.text) { p.set('w', S.text); p.set('l', S.wb); }
+  if (S.inv) p.set('inv', '1');
+  if (S.rev) p.set('rev', '1');
+  if (S.akz) p.set('a', '1');
+  const h = p.toString();
+  history.replaceState(null, '', h ? '#' + h : location.pathname + location.search);
+}
+function hashLesen() {
+  const p = new URLSearchParams(location.hash.slice(1));
+  if (!p.has('w') && !p.has('inv') && !p.has('rev')) return false;
+  S.text = (p.get('w') || '').slice(0, 60);
+  const l = p.get('l');
+  if (l && SPRACHEN.includes(l)) { S.wb = l; S.wbEigen = l !== S.ui; }
+  S.akz = p.get('a') === '1' && akzenteMoeglich(S.wb);
+  S.inv = p.get('inv') === '1';
+  S.rev = p.get('rev') === '1';
+  return true;
+}
+
+/* ===================== Sprache und Darstellung ===================== */
+function setzeDarstellung(v, merken) {
+  const d = document.documentElement;
+  let ts = null, vs = null;
+  if (v === 'light' || v === 'dark') ts = v;
+  else if (v === 'hc-dark' || v === 'hc-light') { ts = v.slice(3); vs = 'contrast'; }
+  else if (v === 'cvd-dark' || v === 'cvd-light') { ts = v.slice(4); vs = 'cvd'; }
+  else if (v === 'invert') vs = 'invert';
+  else if (matchMedia('(prefers-contrast: more)').matches) { ts = matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'; vs = 'contrast'; }
+  if (ts) d.setAttribute('data-theme', ts); else d.removeAttribute('data-theme');
+  if (vs) d.setAttribute('data-vision', vs); else d.removeAttribute('data-vision');
+  if (merken) speichern('werkstatt.darstellung', v);
+  const hell = ts === 'light' || (!ts && matchMedia('(prefers-color-scheme: light)').matches && v !== 'invert');
+  document.querySelector('meta[name="theme-color"]').content = hell ? '#F1EFF6' : '#100E17';
+  alleFaerben();
+}
+function fuelle(sel, werte, namen, wert) {
+  sel.textContent = '';
+  werte.forEach((v, i) => sel.append(el('option', { value: v, text: namen[i] })));
+  sel.value = wert;
+}
+function setzeSprache(l, merken) {
+  S.ui = T[l] ? l : 'en';
+  if (merken) speichern('anagrammaton.sprache', S.ui);
+  const t = L();
+  document.documentElement.lang = S.ui === 'pt' ? 'pt-BR' : S.ui;
+  document.title = 'Anagrammaton · ' + t.unter;
+  document.querySelectorAll('[data-i]').forEach(e => { const v = t[e.dataset.i]; if (typeof v === 'string') e.textContent = v; });
+  fuelle($('sprache'), SPRACHEN, SPRACHEN.map(x => NAMEN[x]), S.ui);
+  const ds = $('darstellung'), alt = ds.value || laden('werkstatt.darstellung') || 'system';
+  fuelle(ds, DARST, t.darstOpt, DARST.includes(alt) ? alt : 'system');
+  fuelle($('maxw'), ['0', '1', '2', '3', '4', '5'], [t.auto, '1', '2', '3', '4', '5'], String(S.maxW));
+  $('text').placeholder = t.eingabeP;
+  $('pflicht').placeholder = t.pflichtP;
+  $('leeren').setAttribute('aria-label', t.leeren); $('leeren').title = t.leeren;
+  $('reiter').setAttribute('aria-label', t.trefferL);
+  for (const k of ['mischen', 'invert', 'reverse', 'ausgang']) $(k).title = t[k + 'T'];
+  $('akz-w').title = t.akzenteT;
+  if (!S.wbEigen) S.wb = S.ui;
+  zeichneBeispiele();
+}
+// Beim ersten Besuch läuft der Worker noch ohne Service Worker, seine Wortliste landet nicht im Cache.
+// Darum holt die Seite jede benutzte Liste einmal selbst, sobald der Service Worker sie steuert.
+const ohneSW = 'serviceWorker' in navigator && location.protocol !== 'file:' && !navigator.serviceWorker.controller;
+const vorgehalten = new Set();
+function vorhalten(lang) {
+  if (!ohneSW || vorgehalten.has(lang)) return;
+  vorgehalten.add(lang);
+  const holen = () => fetch('./woerter/' + lang + '.txt').catch(() => vorgehalten.delete(lang));
+  navigator.serviceWorker.ready.then(() => {
+    if (navigator.serviceWorker.controller) holen();
+    else navigator.serviceWorker.addEventListener('controllerchange', holen, { once: true });
+  });
+}
+function setzeWb(l) {
+  S.wb = l;
+  vorhalten(l);
+  $('wb').value = l;
+  const geht = akzenteMoeglich(l);
+  $('akz-w').hidden = !geht;
+  if (!geht) S.akz = false;
+  $('akz').checked = S.akz;
+  if (!S.minL) $('minl').value = String(standardMinLaenge(l));
+}
+function neuerText(fliegen = true) {
+  S.basis = tokens(S.text);
+  zeige(sichtbar(), fliegen);
+  buehnenVerlauf();
+  hashSchreiben();
+  sucheBald();
+}
+
+/* ===================== Installieren ===================== */
+function alsApp() { return matchMedia('(display-mode: standalone)').matches || navigator.standalone === true; }
+function zeigeInstall() { $('installieren').hidden = !(window.zuInstall && !alsApp()); }
+window.zuInstallZeigen = zeigeInstall;
+$('installieren').addEventListener('click', async () => {
+  const e = window.zuInstall; window.zuInstall = null; zeigeInstall();
+  if (!e) return;
+  try { e.prompt(); await e.userChoice; } catch (x) {}
+});
+window.addEventListener('appinstalled', () => { window.zuInstall = null; zeigeInstall(); toast(L().installDone); });
+
+/* ===================== Verdrahten ===================== */
+$('text').addEventListener('input', e => { S.text = e.target.value; letzteEingabe = performance.now(); clearTimeout(ansageUhr); neuerText(); });
+$('text').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); suche(); } });
+$('leeren').addEventListener('click', () => { S.text = ''; $('text').value = ''; neuerText(); $('text').focus(); });
+$('wb').addEventListener('change', e => {
+  S.wbEigen = e.target.value !== S.ui;
+  setzeWb(e.target.value);
+  neuerText(false); suche();
+});
+$('akz').addEventListener('change', e => { S.akz = e.target.checked; neuerText(false); suche(); });
+$('teilen').addEventListener('click', () => { hashSchreiben(); kopiere(location.origin + location.pathname + location.hash); });
+$('mischen').addEventListener('click', () => {
+  const u = sichtbar().filter(x => x !== null);
+  if (!u.length) return;
+  S.basis = mische(u);
+  setzeRev(false);
+  zeige(sichtbar());
+  buehneAnsagen(); hashSchreiben();
+});
+$('invert').addEventListener('click', () => { setzeInv(!S.inv, true); hashSchreiben(); });
+$('reverse').addEventListener('click', () => {
+  setzeRev(!S.rev);
+  zeige(sichtbar());
+  if (S.rev && S.text) waehleReiter('rueck');
+  buehneAnsagen(); hashSchreiben();
+});
+$('ausgang').addEventListener('click', () => { S.basis = tokens(S.text); setzeRev(false); zeige(sichtbar()); buehneAnsagen(); hashSchreiben(); });
+$('reiter').addEventListener('click', e => { const b = e.target.closest('[role="tab"]'); if (b) waehleReiter(b.id.slice(4)); });
+$('reiter').addEventListener('keydown', e => {
+  const i = REITER.indexOf(S.tab);
+  if (e.key === 'ArrowRight') { e.preventDefault(); waehleReiter(REITER[(i + 1) % 3], true); }
+  else if (e.key === 'ArrowLeft') { e.preventDefault(); waehleReiter(REITER[(i + 2) % 3], true); }
+  else if (e.key === 'Home') { e.preventDefault(); waehleReiter('ein', true); }
+  else if (e.key === 'End') { e.preventDefault(); waehleReiter('rueck', true); }
+});
+for (const id of ['l-ein', 'l-mehr', 'l-rueck']) {
+  $(id).addEventListener('click', e => {
+    const b = e.target.closest('button[data-t]');
+    if (!b) return;
+    if (b.classList.contains('kopie')) kopiere(b.dataset.t); else spiele(b.dataset.t);
+  });
+}
+function nimmWort(w, lang) {
+  if (lang && lang !== S.wb) { S.wbEigen = lang !== S.ui; setzeWb(lang); }
+  S.text = w; $('text').value = w;
+  setzeRev(false);
+  neuerText(); suche();
+}
+$('beispiele').addEventListener('click', e => { const b = e.target.closest('[data-w]'); if (b) nimmWort(b.dataset.w, S.ui); });
+for (const id of ['e-pal', 'e-paare']) $(id).addEventListener('click', e => { const b = e.target.closest('[data-w]'); if (b) nimmWort(b.dataset.w); });
+$('maxw').addEventListener('change', e => { S.maxW = +e.target.value; suche(); });
+$('minl').addEventListener('change', e => { S.minL = +e.target.value; suche(); });
+let pflichtUhr = 0;
+$('pflicht').addEventListener('input', e => { S.pflicht = e.target.value; clearTimeout(pflichtUhr); pflichtUhr = setTimeout(suche, 350); });
+$('stopp').addEventListener('click', () => { if (worker) worker.postMessage({ typ: 'abbrechen', id: S.id }); });
+$('mehr').addEventListener('click', () => { S.zeigen += 300; zeichneMehr(); });
+$('sprache').addEventListener('change', e => {
+  const wbVorher = S.wb;
+  setzeSprache(e.target.value, true);
+  setzeWb(S.wb);
+  zeichneAlles();
+  if (S.wb !== wbVorher) neuerText(false);
+});
+$('darstellung').addEventListener('change', e => setzeDarstellung(e.target.value, true));
+function folgeGespeichert() {
+  const v = laden('werkstatt.darstellung') || 'system';
+  $('darstellung').value = DARST.includes(v) ? v : 'system';
+  setzeDarstellung(v, false);
+}
+window.addEventListener('storage', e => { if (e.key === 'werkstatt.darstellung') folgeGespeichert(); });
+window.addEventListener('pageshow', e => { if (e.persisted) folgeGespeichert(); });
+matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => setzeDarstellung($('darstellung').value, false));
+matchMedia('(prefers-contrast: more)').addEventListener('change', () => setzeDarstellung($('darstellung').value, false));
+window.addEventListener('hashchange', () => {
+  if (!hashLesen()) return;
+  $('text').value = S.text; setzeWb(S.wb);
+  setzeInv(S.inv, true); setzeRev(S.rev);
+  neuerText(); suche();
+});
+new ResizeObserver(() => groesse()).observe($('kacheln'));
+
+/* ===================== Start ===================== */
+(function start() {
+  let l = laden('anagrammaton.sprache');
+  if (!T[l]) { const c = (navigator.languages || [navigator.language || 'de']).map(x => String(x).toLowerCase().split('-')[0]); l = c.find(x => T[x]) || 'en'; }
+  S.ui = l;
+  hashLesen();
+  setzeSprache(l, false);
+  fuelle($('wb'), SPRACHEN, SPRACHEN.map(x => NAMEN[x]), S.wb);
+  fuelle($('minl'), ['1', '2', '3', '4', '5', '6', '7', '8'], ['1', '2', '3', '4', '5', '6', '7', '8'], String(standardMinLaenge(S.wb)));
+  setzeWb(S.wb);
+  setzeDarstellung(laden('werkstatt.darstellung') || 'system', false);
+  $('text').value = S.text;
+  setzeInv(S.inv, false);
+  setzeRev(S.rev);
+  S.basis = tokens(S.text);
+  zeige(sichtbar(), false);
+  buehnenVerlauf();
+  if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('./sw.js').catch(() => {});
+  starteWorker();
+  suche();
+  zeigeInstall();
+})();
+</script>
+</body>
+</html>
